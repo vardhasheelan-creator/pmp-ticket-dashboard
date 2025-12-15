@@ -27,20 +27,20 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    # Parse dates safely
+    # Clean & normalize date formats (handles YYYY-MM-DD, MM/DD/YYYY, DD-MM-YYYY)
     df["Request Date"] = pd.to_datetime(
         df["Request Date"].astype(str).str.strip(),
-        dayfirst=True,
+        format="mixed",       # handles mixed formats automatically
         errors="coerce"
-    )
+    ).dt.date
 
-    # 🔒 HARD FILTER: ONLY 2025 DATA
-    df = df[df["Request Date"].dt.year == 2025]
-
-    # Convert to date (after filtering)
-    df["Request Date"] = df["Request Date"].dt.date
+    # Remove dates older than this year (prevents 2024 showing in 2025 filters)
+    current_year = datetime.today().year
+    df = df[df["Request Date"] >= datetime(current_year, 1, 1).date()]
 
     return df
+
+df = load_data()
 
 # -------------------------------------------------
 # SIDEBAR FILTERS
