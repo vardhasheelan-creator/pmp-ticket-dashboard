@@ -27,18 +27,43 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
+    # --- Date fix (already correct) ---
     df["Request Date"] = (
         pd.to_datetime(
-            df["Request Date"].astype(str).str.strip(),
+            df["Request Date"]
+            .astype(str)
+            .str.strip(),
             dayfirst=True,
             errors="coerce"
         )
         .dt.date
     )
 
+    # 🔥 TEXT NORMALIZATION (CRITICAL)
+    df["L1/L2/L3"] = (
+        df["L1/L2/L3"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    df["Category"] = (
+        df["Category"]
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.+$", "", regex=True)  # remove trailing dots
+        .str.title()
+    )
+
+    df["Status"] = (
+        df["Status"]
+        .astype(str)
+        .str.strip()
+        .str.title()
+    )
+
     return df
 
-df = load_data()
 
 # -------------------------------------------------
 # SIDEBAR FILTERS
