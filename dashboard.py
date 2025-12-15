@@ -62,7 +62,10 @@ elif view == "Last Week":
 
 elif view == "This Month":
     start_date = today.replace(day=1)
-    end_date = today
+    end_date = today.replace(
+        year=today.year,
+        month=today.month
+    )
 
 else:
     start_date = today.replace(month=1, day=1)
