@@ -1,53 +1,64 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-from datetime import date, timedelta
 
-# --------------------------------------------------
-# Page config
-# --------------------------------------------------
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
 st.set_page_config(
-    page_title="PMP Automated Ticket Dashboard",
+    page_title="PMP Ticket Dashboard",
     layout="wide"
 )
 
-st.title("📊 PMP Automated Ticket Dashboard")
+# -------------------------------------------------
+# GOOGLE SHEET (LIVE SOURCE)
+# -------------------------------------------------
+GOOGLE_SHEET_CSV_URL = (
+    "https://docs.google.com/spreadsheets/d/"
+    "16IrnodH0VlT0mPNk9HahizoX3LTR7CwZzxd0rsXwTuw"
+    "/export?format=csv"
+)
 
-# --------------------------------------------------
-# Load data
-# --------------------------------------------------
-@st.cache_data
+# -------------------------------------------------
+# LOAD DATA (AUTO REFRESH EVERY 60s)
+# -------------------------------------------------
+@st.cache_data(ttl=60)
 def load_data():
-    df = pd.read_excel("data/tickets.xlsx")
+    df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
+
+    # Ensure date parsing is correct
     df["Request Date"] = pd.to_datetime(
-        df["Request Date"], dayfirst=True, errors="coerce"
+        df["Request Date"],
+        dayfirst=True,
+        errors="coerce"
     )
-    df["Request_Date_Only"] = df["Request Date"].dt.date
+
     return df
 
 df = load_data()
 
-# --------------------------------------------------
-# Sidebar filters
-# --------------------------------------------------
-st.sidebar.header("📅 Filters")
+# -------------------------------------------------
+# SIDEBAR FILTERS
+# -------------------------------------------------
+st.sidebar.title("📅 Filters")
 
-filter_type = st.sidebar.selectbox(
+view = st.sidebar.selectbox(
     "Select View",
     ["This Week", "Last Week", "This Month", "This Year"]
 )
 
-today = date.today()
+today = datetime.today()
 
-if filter_type == "This Week":
+if view == "This Week":
     start_date = today - timedelta(days=today.weekday())
     end_date = start_date + timedelta(days=6)
 
-elif filter_type == "Last Week":
+elif view == "Last Week":
     end_date = today - timedelta(days=today.weekday() + 1)
     start_date = end_date - timedelta(days=6)
 
-elif filter_type == "This Month":
+elif view == "This Month":
     start_date = today.replace(day=1)
     end_date = today
 
@@ -56,154 +67,114 @@ else:  # This Year
     end_date = today
 
 filtered_df = df[
-    (df["Request_Date_Only"] >= start_date) &
-    (df["Request_Date_Only"] <= end_date)
+    (df["Request Date"] >= start_date) &
+    (df["Request Date"] <= end_date)
 ]
 
-st.subheader(f"Showing data from {start_date} to {end_date}")
-
-# --------------------------------------------------
-# TOP KPI CARDS
-# --------------------------------------------------
-k1, k2, k3, k4 = st.columns(4)
-
-k1.metric("Total Tickets", len(filtered_df))
-k2.metric("Open", (filtered_df["Status"] == "Open").sum())
-k3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
-k4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
-
-st.divider()
-
-# --------------------------------------------------
-# LEVEL-WISE KPI LOGIC
-# --------------------------------------------------
-def level_status_count(level, status):
-    return len(
-        filtered_df[
-            (filtered_df["L1/L2/L3"] == level) &
-            (filtered_df["Status"] == status)
-        ]
-    )
-
-st.subheader("🧑‍💼 Ticket Ownership by Level")
-
-l1, l2, l3 = st.columns(3)
-l1.metric("Closed by L1", level_status_count("L1", "Closed"))
-l2.metric("Closed by L2", level_status_count("L2", "Closed"))
-l3.metric("Closed by L3", level_status_count("L3", "Closed"))
-
-i1, i2, i3 = st.columns(3)
-i1.metric("In-Progress with L1", level_status_count("L1", "In-Progress"))
-i2.metric("In-Progress with L2", level_status_count("L2", "In-Progress"))
-i3.metric("In-Progress with L3", level_status_count("L3", "In-Progress"))
-
-st.divider()
-
-# --------------------------------------------------
-# LEVEL vs STATUS TABLE
-# --------------------------------------------------
-st.subheader("📋 Level vs Status Breakdown")
-
-if filtered_df.empty:
-    st.info("No tickets available for selected period")
-else:
-    level_status_table = (
-        filtered_df
-        .groupby(["L1/L2/L3", "Status"])
-        .size()
-        .unstack(fill_value=0)
-        .reset_index()
-    )
-
-    st.dataframe(level_status_table, use_container_width=True)
-
-st.divider()
-
-# --------------------------------------------------
-# PMP CATEGORY TABLE (CLOSED TICKETS)
-# --------------------------------------------------
-st.subheader("📂 PMP Categories (Closed Tickets)")
-
-if filtered_df.empty:
-    st.info("No closed tickets in selected period")
-else:
-    category_table = (
-        filtered_df[filtered_df["Status"] == "Closed"]
-        .groupby(["Category", "L1/L2/L3"])
-        .size()
-        .unstack(fill_value=0)
-        .reset_index()
-    )
-
-    st.dataframe(category_table, use_container_width=True)
-
-# --------------------------------------------------
-# DOWNLOAD CSV
-# --------------------------------------------------
-st.divider()
-st.subheader("⬇️ Download Data")
-
-csv = filtered_df.to_csv(index=False).encode("utf-8")
-
-st.download_button(
-    label="Download filtered data as CSV",
-    data=csv,
-    file_name="pmp_filtered_tickets.csv",
-    mime="text/csv"
+# -------------------------------------------------
+# HEADER
+# -------------------------------------------------
+st.title("📊 PMP Automated Ticket Dashboard")
+st.caption(
+    f"Showing data from {start_date.date()} to {end_date.date()}"
 )
 
-# --------------------------------------------------
-# CHARTS SECTION (NO FORMAT CHANGES ABOVE)
-# --------------------------------------------------
+# -------------------------------------------------
+# METRICS
+# -------------------------------------------------
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Total Tickets", len(filtered_df))
+col2.metric("Open", len(filtered_df[filtered_df["Status"] == "Open"]))
+col3.metric("Closed", len(filtered_df[filtered_df["Status"] == "Closed"]))
+col4.metric("In-Progress", len(filtered_df[filtered_df["Status"] == "In-Progress"]))
+
+# -------------------------------------------------
+# TICKET OWNERSHIP
+# -------------------------------------------------
+st.divider()
+st.subheader("🧑‍💼 Ticket Ownership by Level")
+
+l1_closed = len(filtered_df[
+    (filtered_df["Status"] == "Closed") &
+    (filtered_df["L1/L2/L3"] == "L1")
+])
+
+l2_closed = len(filtered_df[
+    (filtered_df["Status"] == "Closed") &
+    (filtered_df["L1/L2/L3"] == "L2")
+])
+
+l3_closed = len(filtered_df[
+    (filtered_df["Status"] == "Closed") &
+    (filtered_df["L1/L2/L3"] == "L3")
+])
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Closed by L1", l1_closed)
+c2.metric("Closed by L2", l2_closed)
+c3.metric("Closed by L3", l3_closed)
+
+# -------------------------------------------------
+# CATEGORY SUMMARY TABLE
+# -------------------------------------------------
+st.divider()
+st.subheader("📁 PMP Categories")
+
+category_table = (
+    filtered_df
+    .groupby(["Category", "L1/L2/L3"])
+    .size()
+    .unstack(fill_value=0)
+    .reset_index()
+)
+
+st.dataframe(category_table, width="stretch")
+
+# -------------------------------------------------
+# CHARTS
+# -------------------------------------------------
 st.divider()
 st.subheader("📊 Visual Insights")
 
-if not filtered_df.empty:
+col_left, col_right = st.columns(2)
 
-    col1, col2 = st.columns(2)
+# Pie chart – Status distribution
+status_counts = filtered_df["Status"].value_counts()
 
-    # -------------------------------
-    # PIE CHART: Closed tickets by Level
-    # -------------------------------
-    closed_by_level = (
-        filtered_df[filtered_df["Status"] == "Closed"]
-        .groupby("L1/L2/L3")
-        .size()
-        .reset_index(name="Count")
-    )
+fig1, ax1 = plt.subplots()
+ax1.pie(
+    status_counts,
+    labels=status_counts.index,
+    autopct="%1.0f%%",
+    startangle=90
+)
+ax1.set_title("Ticket Status Distribution")
+col_left.pyplot(fig1)
 
-    if not closed_by_level.empty:
-        fig1, ax1 = plt.subplots(figsize=(5, 5))
-        ax1.pie(
-            closed_by_level["Count"],
-            labels=closed_by_level["L1/L2/L3"],
-            autopct="%1.0f%%",
-            startangle=90
-        )
-        ax1.set_title("Closed Tickets by Level")
-        col1.pyplot(fig1)
-    else:
-        col1.info("No closed tickets to display")
+# Bar chart – Level vs Status
+level_status = (
+    filtered_df
+    .groupby(["L1/L2/L3", "Status"])
+    .size()
+    .unstack(fill_value=0)
+)
 
-    # -------------------------------
-    # BAR CHART: Status by Level (Horizontal labels)
-    # -------------------------------
-    status_by_level = (
-        filtered_df
-        .groupby(["L1/L2/L3", "Status"])
-        .size()
-        .unstack(fill_value=0)
-    )
+fig2, ax2 = plt.subplots()
+level_status.plot(kind="bar", ax=ax2)
+ax2.set_title("Ticket Status by Level")
+ax2.set_xlabel("Level")
+ax2.set_ylabel("Count")
+ax2.tick_params(axis="x", rotation=0)
+col_right.pyplot(fig2)
 
-    fig2, ax2 = plt.subplots(figsize=(6, 4))
-    status_by_level.plot(kind="bar", ax=ax2)
-
-    ax2.set_xlabel("Level")
-    ax2.set_ylabel("Ticket Count")
-    ax2.tick_params(axis="x", rotation=0)  # 👈 FIXED
-    ax2.legend(title="Status")
-
-    col2.pyplot(fig2)
-
-else:
-    st.info("No data available to generate charts")
+# -------------------------------------------------
+# DOWNLOAD
+# -------------------------------------------------
+st.divider()
+st.download_button(
+    label="⬇️ Download Filtered Data (CSV)",
+    data=filtered_df.to_csv(index=False),
+    file_name="pmp_filtered_report.csv",
+    mime="text/csv"
+)
