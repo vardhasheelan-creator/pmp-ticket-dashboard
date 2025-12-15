@@ -49,6 +49,7 @@ def load_data():
     return df
 
 df = load_data()
+df = df.drop_duplicates(subset=["ID"])
 
 # -------------------------------------------------
 # SIDEBAR FILTERS
