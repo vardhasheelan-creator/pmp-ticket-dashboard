@@ -3,58 +3,54 @@ import pandas as pd
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 
-# -------------------- PAGE CONFIG --------------------
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
 st.set_page_config(
-    page_title="PMP Automated Ticket Dashboard",
+    page_title="PMP Ticket Dashboard",
     layout="wide"
 )
 
-# -------------------- LOAD DATA --------------------
-@st.cache_data(ttl=300)
+# -------------------------------------------------
+# GOOGLE SHEET (LIVE SOURCE)
+# -------------------------------------------------
+GOOGLE_SHEET_CSV_URL = (
+    "https://docs.google.com/spreadsheets/d/"
+    "16IrnodH0VlT0mPNk9HahizoX3LTR7CwZzxd0rsXwTuw"
+    "/export?format=csv"
+)
+
+# -------------------------------------------------
+# LOAD DATA (AUTO REFRESH EVERY 60s)
+# -------------------------------------------------
+@st.cache_data(ttl=60)
 def load_data():
-    SHEET_ID = "16IrnodH0VlT0mPNk9HahizoX3LTR7CwZzxd0rsXwTuw"
-    SHEET_NAME = "Sheet1"
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
+    df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    df = pd.read_csv(url)
-
-    df.columns = [
-        "ID",
-        "Request Date",
-        "Name",
-        "Email",
-        "Description",
-        "Category",
-        "Status",
-        "Level"
-    ]
-
-    df["Request Date"] = pd.to_datetime(
-        df["Request Date"],
-        dayfirst=True,
-        errors="coerce"
+    # 🔥 CRITICAL FIX: Clean + normalize dates
+    df["Request Date"] = (
+        pd.to_datetime(
+            df["Request Date"]
+            .astype(str)
+            .str.strip(),
+            dayfirst=True,
+            errors="coerce"
+        )
+        .dt.date
     )
 
-    df["Status"] = df["Status"].str.strip()
-    df["Level"] = df["Level"].str.strip().str.upper()
-    df["Category"] = df["Category"].str.strip()
+    return df
 
-    return df.dropna(subset=["Request Date"])
-
-
-# -------------------- LOAD DF (CRITICAL) --------------------
 df = load_data()
 
-if df.empty:
-    st.warning("No data available.")
-    st.stop()
-
-# -------------------- SIDEBAR FILTER --------------------
+# -------------------------------------------------
+# SIDEBAR FILTERS
+# -------------------------------------------------
 st.sidebar.title("📅 Filters")
 
 view = st.sidebar.selectbox(
     "Select View",
-    ["This Week", "Last Week", "This Month", "This Year", "All Time"]
+    ["This Week", "Last Week", "This Month", "This Year"]
 )
 
 today = datetime.today().date()
@@ -62,124 +58,130 @@ today = datetime.today().date()
 if view == "This Week":
     start_date = today - timedelta(days=today.weekday())
     end_date = start_date + timedelta(days=6)
+
 elif view == "Last Week":
-    start_date = today - timedelta(days=today.weekday() + 7)
-    end_date = start_date + timedelta(days=6)
+    end_date = today - timedelta(days=today.weekday() + 1)
+    start_date = end_date - timedelta(days=6)
+
 elif view == "This Month":
     start_date = today.replace(day=1)
     end_date = today
-elif view == "This Year":
+
+else:  # This Year
     start_date = today.replace(month=1, day=1)
     end_date = today
-else:
-    start_date = df["Request Date"].min().date()
-    end_date = df["Request Date"].max().date()
 
-# -------------------- FILTER DATA --------------------
 filtered_df = df[
-    (df["Request Date"].dt.date >= start_date) &
-    (df["Request Date"].dt.date <= end_date)
+    (df["Request Date"] >= start_date) &
+    (df["Request Date"] <= end_date)
 ]
 
-# -------------------- HEADER --------------------
+# -------------------------------------------------
+# HEADER
+# -------------------------------------------------
 st.title("📊 PMP Automated Ticket Dashboard")
-st.caption(f"Showing data from **{start_date}** to **{end_date}**")
+st.caption(f"Showing data from {start_date} to {end_date}")
 
-# -------------------- METRICS --------------------
-total = len(filtered_df)
-open_cnt = len(filtered_df[filtered_df["Status"] == "Open"])
-closed_cnt = len(filtered_df[filtered_df["Status"] == "Closed"])
-inprog_cnt = len(filtered_df[filtered_df["Status"] == "In-Progress"])
+# -------------------------------------------------
+# METRICS
+# -------------------------------------------------
+col1, col2, col3, col4 = st.columns(4)
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Tickets", total)
-c2.metric("Open", open_cnt)
-c3.metric("Closed", closed_cnt)
-c4.metric("In-Progress", inprog_cnt)
+col1.metric("Total Tickets", len(filtered_df))
+col2.metric("Open", (filtered_df["Status"] == "Open").sum())
+col3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
+col4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
 
-# -------------------- OWNERSHIP BY LEVEL --------------------
+# -------------------------------------------------
+# TICKET OWNERSHIP
+# -------------------------------------------------
 st.divider()
-st.subheader("👤 Ticket Ownership by Level")
+st.subheader("🧑‍💼 Ticket Ownership by Level")
 
-def count_level(status, level):
+def closed_by(level):
     return len(
         filtered_df[
-            (filtered_df["Status"] == status) &
-            (filtered_df["Level"] == level)
+            (filtered_df["Status"] == "Closed") &
+            (filtered_df["L1/L2/L3"] == level)
         ]
     )
 
-l1_closed = count_level("Closed", "L1")
-l2_closed = count_level("Closed", "L2")
-l3_closed = count_level("Closed", "L3")
+c1, c2, c3 = st.columns(3)
+c1.metric("Closed by L1", closed_by("L1"))
+c2.metric("Closed by L2", closed_by("L2"))
+c3.metric("Closed by L3", closed_by("L3"))
 
-oc1, oc2, oc3 = st.columns(3)
-oc1.metric("Closed by L1", l1_closed)
-oc2.metric("Closed by L2", l2_closed)
-oc3.metric("Closed by L3", l3_closed)
-
-# -------------------- CATEGORY TABLE --------------------
+# -------------------------------------------------
+# CATEGORY TABLE
+# -------------------------------------------------
 st.divider()
 st.subheader("📁 PMP Categories")
 
-category_table = (
-    filtered_df
-    .pivot_table(
-        index="Category",
-        columns="Level",
-        values="ID",
-        aggfunc="count",
-        fill_value=0
-    )
-    .reset_index()
-)
-
-for col in ["L1", "L2", "L3"]:
-    if col not in category_table.columns:
-        category_table[col] = 0
-
-category_table = category_table[["Category", "L1", "L2", "L3"]]
-
-st.dataframe(category_table, width="stretch")
-
-# -------------------- CHARTS --------------------
-st.divider()
-st.subheader("📊 Ticket Status by Level")
-
 if not filtered_df.empty:
-    level_status = (
+    category_table = (
         filtered_df
-        .groupby(["Level", "Status"])
+        .groupby(["Category", "L1/L2/L3"])
         .size()
         .unstack(fill_value=0)
-        .reindex(["L1", "L2", "L3"], fill_value=0)
+        .reset_index()
     )
-
-    fig, ax = plt.subplots(figsize=(8, 4))
-    level_status.plot(kind="bar", ax=ax)
-    ax.set_xlabel("Level")
-    ax.set_ylabel("Count")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
-    ax.legend(title="Status")
-
-    st.pyplot(fig)
+    st.dataframe(category_table, width="stretch")
 else:
-    st.info("No data available for charts")
+    st.info("No category data available for this period.")
 
-# -------------------- DATA PREVIEW --------------------
+# -------------------------------------------------
+# CHARTS (SAFE)
+# -------------------------------------------------
 st.divider()
-st.subheader("🧾 Weekly Record Preview")
+st.subheader("📊 Visual Insights")
 
-preview_cols = ["Request Date", "Category", "Status", "Level"]
-st.dataframe(
-    filtered_df[preview_cols].sort_values("Request Date"),
-    width="stretch"
+col_left, col_right = st.columns(2)
+
+# ---- PIE CHART: Status Distribution ----
+status_counts = filtered_df["Status"].value_counts()
+
+if not status_counts.empty:
+    fig1, ax1 = plt.subplots()
+    ax1.pie(
+        status_counts,
+        labels=status_counts.index,
+        autopct="%1.0f%%",
+        startangle=90
+    )
+    ax1.set_title("Ticket Status Distribution")
+    col_left.pyplot(fig1)
+else:
+    col_left.info("No status data available for this period.")
+
+# ---- BAR CHART: Level vs Status ----
+level_status = (
+    filtered_df
+    .groupby(["L1/L2/L3", "Status"])
+    .size()
+    .unstack(fill_value=0)
 )
 
-# -------------------- DOWNLOAD --------------------
+if (
+    not level_status.empty
+    and level_status.select_dtypes("number").sum().sum() > 0
+):
+    fig2, ax2 = plt.subplots()
+    level_status.plot(kind="bar", ax=ax2)
+    ax2.set_title("Ticket Status by Level")
+    ax2.set_xlabel("Level")
+    ax2.set_ylabel("Count")
+    ax2.tick_params(axis="x", rotation=0)
+    col_right.pyplot(fig2)
+else:
+    col_right.info("No level/status data available for chart.")
+
+# -------------------------------------------------
+# DOWNLOAD
+# -------------------------------------------------
+st.divider()
 st.download_button(
-    "⬇️ Download CSV",
+    "⬇️ Download Filtered Data (CSV)",
     filtered_df.to_csv(index=False),
-    file_name="pmp_ticket_report.csv",
-    mime="text/csv"
+    "pmp_filtered_report.csv",
+    "text/csv"
 )
