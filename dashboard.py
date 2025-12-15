@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import matplotlib.pyplot as plt
 
 # -------------------------------------------------
@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# GOOGLE SHEET (LIVE SOURCE)
+# GOOGLE SHEET
 # -------------------------------------------------
 GOOGLE_SHEET_CSV_URL = (
     "https://docs.google.com/spreadsheets/d/"
@@ -21,23 +21,20 @@ GOOGLE_SHEET_CSV_URL = (
 )
 
 # -------------------------------------------------
-# LOAD DATA (HARD DATE NORMALIZATION)
+# LOAD DATA (NO DATE GUESSING)
 # -------------------------------------------------
 @st.cache_data(ttl=60)
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    # Normalize Request Date aggressively
-    df["Request Date"] = (
-        pd.to_datetime(
-            df["Request Date"],
-            errors="coerce",
-            infer_datetime_format=True
-        )
-        .dt.date
+    # STRICT ISO parsing
+    df["Request Date"] = pd.to_datetime(
+        df["Request Date"],
+        format="%Y-%m-%d",
+        errors="coerce"
     )
 
-    # Drop rows with invalid dates
+    # Drop bad dates
     df = df.dropna(subset=["Request Date"])
 
     return df
@@ -54,66 +51,70 @@ view = st.sidebar.selectbox(
     ["This Week", "Last Week", "This Month", "This Year"]
 )
 
-today = datetime.today().date()
-
-if view == "This Week":
-    start_date = today - timedelta(days=today.weekday())
-    end_date = today
-
-elif view == "Last Week":
-    end_date = today - timedelta(days=today.weekday() + 1)
-    start_date = end_date - timedelta(days=6)
-
-elif view == "This Month":
-    start_date = today.replace(day=1)
-    end_date = today
-
-else:  # This Year
-    start_date = today.replace(month=1, day=1)
-    end_date = today
+today = datetime.today()
 
 # -------------------------------------------------
-# STRICT DATE FILTER (YEAR + MONTH SAFE)
+# DATE FILTERING (YEAR + MONTH SAFE)
 # -------------------------------------------------
-filtered_df = df[
-    (df["Request Date"] >= start_date) &
-    (df["Request Date"] <= end_date)
-]
+if view == "This Month":
+    filtered_df = df[
+        (df["Request Date"].dt.year == today.year) &
+        (df["Request Date"].dt.month == today.month)
+    ]
+
+elif view == "This Year":
+    filtered_df = df[
+        df["Request Date"].dt.year == today.year
+    ]
+
+elif view == "This Week":
+    week = today.isocalendar().week
+    filtered_df = df[
+        (df["Request Date"].dt.year == today.year) &
+        (df["Request Date"].dt.isocalendar().week == week)
+    ]
+
+else:  # Last Week
+    week = today.isocalendar().week - 1
+    filtered_df = df[
+        (df["Request Date"].dt.year == today.year) &
+        (df["Request Date"].dt.isocalendar().week == week)
+    ]
 
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
 st.title("📊 PMP Automated Ticket Dashboard")
-st.caption(f"Showing data from {start_date} to {end_date}")
+st.caption(
+    f"Showing {view} data | Rows: {len(filtered_df)}"
+)
 
 # -------------------------------------------------
 # METRICS
 # -------------------------------------------------
-col1, col2, col3, col4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-col1.metric("Total Tickets", len(filtered_df))
-col2.metric("Open", (filtered_df["Status"] == "Open").sum())
-col3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
-col4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
+c1.metric("Total Tickets", len(filtered_df))
+c2.metric("Open", (filtered_df["Status"] == "Open").sum())
+c3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
+c4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
 
 # -------------------------------------------------
-# TICKET OWNERSHIP
+# OWNERSHIP
 # -------------------------------------------------
 st.divider()
 st.subheader("🧑‍💼 Ticket Ownership by Level")
 
 def closed_by(level):
-    return len(
-        filtered_df[
-            (filtered_df["Status"] == "Closed") &
-            (filtered_df["L1/L2/L3"] == level)
-        ]
-    )
+    return filtered_df[
+        (filtered_df["Status"] == "Closed") &
+        (filtered_df["L1/L2/L3"] == level)
+    ].shape[0]
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Closed by L1", closed_by("L1"))
-c2.metric("Closed by L2", closed_by("L2"))
-c3.metric("Closed by L3", closed_by("L3"))
+l1, l2, l3 = st.columns(3)
+l1.metric("Closed by L1", closed_by("L1"))
+l2.metric("Closed by L2", closed_by("L2"))
+l3.metric("Closed by L3", closed_by("L3"))
 
 # -------------------------------------------------
 # CATEGORY TABLE
@@ -121,17 +122,14 @@ c3.metric("Closed by L3", closed_by("L3"))
 st.divider()
 st.subheader("📁 PMP Categories")
 
-if not filtered_df.empty:
-    category_table = (
-        filtered_df
-        .groupby(["Category"])
-        .size()
-        .reset_index(name="Count")
-        .sort_values("Count", ascending=False)
-    )
-    st.dataframe(category_table, use_container_width=True)
-else:
-    st.info("No category data available for this period.")
+category_table = (
+    filtered_df
+    .groupby("Category")
+    .size()
+    .reset_index(name="Tickets")
+)
+
+st.dataframe(category_table, use_container_width=True)
 
 # -------------------------------------------------
 # CHARTS
@@ -139,48 +137,36 @@ else:
 st.divider()
 st.subheader("📊 Visual Insights")
 
-col_left, col_right = st.columns(2)
+col1, col2 = st.columns(2)
 
-# ---- PIE CHART ----
+# Pie
 status_counts = filtered_df["Status"].value_counts()
+fig1, ax1 = plt.subplots()
+ax1.pie(status_counts, labels=status_counts.index, autopct="%1.0f%%")
+ax1.set_title("Ticket Status Distribution")
+col1.pyplot(fig1)
 
-if not status_counts.empty:
-    fig1, ax1 = plt.subplots()
-    ax1.pie(
-        status_counts,
-        labels=status_counts.index,
-        autopct="%1.0f%%",
-        startangle=90
-    )
-    ax1.set_title("Ticket Status Distribution")
-    col_left.pyplot(fig1)
-else:
-    col_left.info("No status data available.")
-
-# ---- BAR CHART ----
+# Bar
 level_status = (
     filtered_df
-    .groupby(["L1/L2/L3"])
+    .groupby(["L1/L2/L3", "Status"])
     .size()
-    .reset_index(name="Count")
+    .unstack(fill_value=0)
 )
 
-if not level_status.empty:
-    fig2, ax2 = plt.subplots(figsize=(5, 3))
-    ax2.bar(level_status["L1/L2/L3"], level_status["Count"])
-    ax2.set_title("Tickets by Level")
-    ax2.set_xlabel("Level")
-    ax2.set_ylabel("Count")
-    col_right.pyplot(fig2)
-else:
-    col_right.info("No level data available.")
+fig2, ax2 = plt.subplots()
+level_status.plot(kind="bar", ax=ax2)
+ax2.set_title("Ticket Status by Level")
+ax2.set_xlabel("Level")
+ax2.set_ylabel("Count")
+col2.pyplot(fig2)
 
 # -------------------------------------------------
 # DOWNLOAD
 # -------------------------------------------------
 st.divider()
 st.download_button(
-    "⬇️ Download Filtered Data (CSV)",
+    "⬇️ Download Filtered Data",
     filtered_df.to_csv(index=False),
     "pmp_filtered_report.csv",
     "text/csv"
