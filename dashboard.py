@@ -27,18 +27,21 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    # 🔒 HARD SAFETY FILTER: only rows that CONTAIN 2025
+    # keep only 2025 rows (string-level safety)
     df = df[df["Request Date"].astype(str).str.contains("2025", na=False)]
 
-    # Now safely parse dates (DD-MM-YYYY)
+    # parse DD-MM-YYYY safely
     df["Request Date"] = pd.to_datetime(
         df["Request Date"].astype(str).str.strip(),
         dayfirst=True,
         errors="coerce"
     ).dt.date
 
-    # Drop anything that still failed
+    # drop bad dates
     df = df.dropna(subset=["Request Date"])
+
+    # 🔥 KEY FIX: remove duplicate tickets
+    df = df.drop_duplicates(subset=["ID"])
 
     return df
 
@@ -49,7 +52,7 @@ def load_data():
     return df
 
 df = load_data()
-df = df.drop_duplicates(subset=["ID"])
+
 
 # -------------------------------------------------
 # SIDEBAR FILTERS
