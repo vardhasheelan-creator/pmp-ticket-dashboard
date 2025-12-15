@@ -23,47 +23,55 @@ CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:cs
 # Load Data
 # -----------------------------
 @st.cache_data(ttl=300)
+@st.cache_data
 def load_data():
-    df = pd.read_csv(CSV_URL)
+    SHEET_ID = "16IrnodH0VlT0mPNk9HahizoX3LTR7CwZzxd0rsXwTuw"
+    SHEET_NAME = "Sheet1"
 
-    # Rename for safety
-    df.columns = [
-        "ID", "Request Date", "Name", "Email",
-        "Description", "Category", "Status", "Level"
-    ]
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
+    df = pd.read_csv(url)
 
-    # Date parsing
-    df["Request Date"] = pd.to_datetime(df["Request Date"], errors="coerce")
-
-    # -----------------------------
-    # CLEAN & NORMALIZE
-    # -----------------------------
-    df["Level"] = (
-        df["Level"]
-        .astype(str)
-        .str.upper()
+    # 🔒 Normalize column names (safe)
+    df.columns = (
+        df.columns
         .str.strip()
-        .replace({"I1": "L1", "I2": "L2", "I3": "L3"})
+        .str.replace("\n", " ")
+        .str.replace("  ", " ")
     )
 
-    df["Category"] = (
-        df["Category"]
-        .astype(str)
-        .str.strip()
-        .str.title()
+    # ✅ Column mapping (only rename what we use)
+    column_map = {
+        "Request Date": "Request Date",
+        "Category": "Category",
+        "Status": "Status",
+        "L1/L2/L3": "Level"
+    }
+
+    df = df.rename(columns=column_map)
+
+    # 🧹 Drop completely empty columns
+    df = df.dropna(axis=1, how="all")
+
+    # 📅 Date parsing
+    df["Request Date"] = pd.to_datetime(
+        df["Request Date"],
+        dayfirst=True,
+        errors="coerce"
     )
 
-    df["Status"] = (
-        df["Status"]
-        .astype(str)
-        .str.strip()
-        .str.title()
-    )
+    # 🧼 Normalize values
+    df["Status"] = df["Status"].str.strip().str.title()
+    df["Level"] = df["Level"].str.strip().str.upper()
+
+    # 🧠 Fix common typos
+    df["Level"] = df["Level"].replace({
+        "L I": "L1",
+        "L 1": "L1",
+        "L2 ": "L2",
+        "L3 ": "L3"
+    })
 
     return df
-
-
-df = load_data()
 
 # -----------------------------
 # Sidebar Filters
