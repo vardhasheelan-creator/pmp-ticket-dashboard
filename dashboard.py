@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # -------------------------------------------------
-# GOOGLE SHEET
+# GOOGLE SHEET (LIVE SOURCE)
 # -------------------------------------------------
 GOOGLE_SHEET_CSV_URL = (
     "https://docs.google.com/spreadsheets/d/"
@@ -21,24 +21,24 @@ GOOGLE_SHEET_CSV_URL = (
 )
 
 # -------------------------------------------------
-# LOAD DATA
+# LOAD DATA (HARD DATE NORMALIZATION)
 # -------------------------------------------------
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=60)
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    df["Request Date"] = pd.to_datetime(
-        df["Request Date"].astype(str).str.strip(),
-        dayfirst=True,
-        errors="coerce"
+    # Normalize Request Date aggressively
+    df["Request Date"] = (
+        pd.to_datetime(
+            df["Request Date"],
+            errors="coerce",
+            infer_datetime_format=True
+        )
+        .dt.date
     )
 
+    # Drop rows with invalid dates
     df = df.dropna(subset=["Request Date"])
-
-    # 🔥 HARD YEAR + MONTH COLUMNS
-    df["YEAR"] = df["Request Date"].dt.year
-    df["MONTH"] = df["Request Date"].dt.month
-    df["DATE"] = df["Request Date"].dt.date
 
     return df
 
@@ -54,48 +54,37 @@ view = st.sidebar.selectbox(
     ["This Week", "Last Week", "This Month", "This Year"]
 )
 
-today = datetime.today()
-current_year = today.year
-current_month = today.month
+today = datetime.today().date()
 
-# -------------------------------------------------
-# FILTER LOGIC (FIXED)
-# -------------------------------------------------
 if view == "This Week":
-    start_date = today.date() - timedelta(days=today.weekday())
-    end_date = today.date()
-
-    filtered_df = df[
-        (df["DATE"] >= start_date) &
-        (df["DATE"] <= end_date)
-    ]
+    start_date = today - timedelta(days=today.weekday())
+    end_date = today
 
 elif view == "Last Week":
-    end_date = today.date() - timedelta(days=today.weekday() + 1)
+    end_date = today - timedelta(days=today.weekday() + 1)
     start_date = end_date - timedelta(days=6)
 
-    filtered_df = df[
-        (df["DATE"] >= start_date) &
-        (df["DATE"] <= end_date)
-    ]
-
 elif view == "This Month":
-    # 🔥 BULLETPROOF FIX
-    filtered_df = df[
-        (df["YEAR"] == current_year) &
-        (df["MONTH"] == current_month)
-    ]
+    start_date = today.replace(day=1)
+    end_date = today
 
 else:  # This Year
-    filtered_df = df[df["YEAR"] == current_year]
+    start_date = today.replace(month=1, day=1)
+    end_date = today
+
+# -------------------------------------------------
+# STRICT DATE FILTER (YEAR + MONTH SAFE)
+# -------------------------------------------------
+filtered_df = df[
+    (df["Request Date"] >= start_date) &
+    (df["Request Date"] <= end_date)
+]
 
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
 st.title("📊 PMP Automated Ticket Dashboard")
-st.caption(
-    f"Showing data for {view} | Year: {current_year}"
-)
+st.caption(f"Showing data from {start_date} to {end_date}")
 
 # -------------------------------------------------
 # METRICS
@@ -108,7 +97,7 @@ col3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
 col4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
 
 # -------------------------------------------------
-# OWNERSHIP
+# TICKET OWNERSHIP
 # -------------------------------------------------
 st.divider()
 st.subheader("🧑‍💼 Ticket Ownership by Level")
@@ -135,14 +124,14 @@ st.subheader("📁 PMP Categories")
 if not filtered_df.empty:
     category_table = (
         filtered_df
-        .groupby(["Category", "L1/L2/L3"])
+        .groupby(["Category"])
         .size()
-        .unstack(fill_value=0)
-        .reset_index()
+        .reset_index(name="Count")
+        .sort_values("Count", ascending=False)
     )
     st.dataframe(category_table, use_container_width=True)
 else:
-    st.info("No data available")
+    st.info("No category data available for this period.")
 
 # -------------------------------------------------
 # CHARTS
@@ -152,7 +141,7 @@ st.subheader("📊 Visual Insights")
 
 col_left, col_right = st.columns(2)
 
-# PIE
+# ---- PIE CHART ----
 status_counts = filtered_df["Status"].value_counts()
 
 if not status_counts.empty:
@@ -165,40 +154,33 @@ if not status_counts.empty:
     )
     ax1.set_title("Ticket Status Distribution")
     col_left.pyplot(fig1)
+else:
+    col_left.info("No status data available.")
 
-# BAR
+# ---- BAR CHART ----
 level_status = (
     filtered_df
-    .groupby(["L1/L2/L3", "Status"])
+    .groupby(["L1/L2/L3"])
     .size()
-    .unstack(fill_value=0)
+    .reset_index(name="Count")
 )
-
-level_status = level_status[level_status.sum(axis=1) > 0]
 
 if not level_status.empty:
     fig2, ax2 = plt.subplots(figsize=(5, 3))
-    level_status.plot(kind="bar", ax=ax2, width=0.5)
-
-    ax2.set_title("Ticket Status by Level")
+    ax2.bar(level_status["L1/L2/L3"], level_status["Count"])
+    ax2.set_title("Tickets by Level")
     ax2.set_xlabel("Level")
     ax2.set_ylabel("Count")
-    ax2.tick_params(axis="x", rotation=0)
-
-    ax2.legend(
-        title="Status",
-        bbox_to_anchor=(1.02, 1),
-        loc="upper left"
-    )
-
-    col_right.pyplot(fig2, use_container_width=True)
+    col_right.pyplot(fig2)
+else:
+    col_right.info("No level data available.")
 
 # -------------------------------------------------
 # DOWNLOAD
 # -------------------------------------------------
 st.divider()
 st.download_button(
-    "⬇️ Download Filtered Data",
+    "⬇️ Download Filtered Data (CSV)",
     filtered_df.to_csv(index=False),
     "pmp_filtered_report.csv",
     "text/csv"
