@@ -27,13 +27,11 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    df["Request Date"] = (
-        pd.to_datetime(
-            df["Request Date"].astype(str).str.strip(),
-            dayfirst=True,
-            errors="coerce"
-        )
-        .dt.date
+    # 🔥 FIX 1: FORCE DD-MM-YYYY (NO GUESSING)
+    df["Request Date"] = pd.to_datetime(
+        df["Request Date"].astype(str).str.strip(),
+        format="%d-%m-%Y",
+        errors="coerce"
     )
 
     return df
@@ -52,32 +50,48 @@ view = st.sidebar.selectbox(
 
 today = datetime.today().date()
 
+# -------------------------------------------------
+# DATE FILTER LOGIC (🔥 FIX 2)
+# -------------------------------------------------
 if view == "This Week":
     start_date = today - timedelta(days=today.weekday())
     end_date = start_date + timedelta(days=6)
+
+    filtered_df = df[
+        (df["Request Date"].dt.date >= start_date) &
+        (df["Request Date"].dt.date <= end_date)
+    ]
 
 elif view == "Last Week":
     end_date = today - timedelta(days=today.weekday() + 1)
     start_date = end_date - timedelta(days=6)
 
+    filtered_df = df[
+        (df["Request Date"].dt.date >= start_date) &
+        (df["Request Date"].dt.date <= end_date)
+    ]
+
 elif view == "This Month":
+    # ✅ MONTH FILTER = YEAR + MONTH (NO RANGE BUGS)
+    filtered_df = df[
+        (df["Request Date"].dt.year == today.year) &
+        (df["Request Date"].dt.month == today.month)
+    ]
     start_date = today.replace(day=1)
     end_date = today
 
-else:
+else:  # This Year
+    filtered_df = df[
+        df["Request Date"].dt.year == today.year
+    ]
     start_date = today.replace(month=1, day=1)
     end_date = today
-
-filtered_df = df[
-    (df["Request Date"] >= start_date) &
-    (df["Request Date"] <= end_date)
-]
 
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
 st.title("📊 PMP Automated Ticket Dashboard")
-st.caption(f"Showing data from {start_date} to {end_date}")
+st.caption(f"Showing data from {start_date} to {end_date} | Rows: {len(filtered_df)}")
 
 # -------------------------------------------------
 # METRICS
@@ -150,40 +164,26 @@ if not status_counts.empty:
 else:
     col_left.info("No status data available.")
 
-# ---- BAR CHART (SINGLE, FIXED) ----
-level_order = ["L1", "L2", "L3"]
-
+# ---- BAR CHART ----
 level_status = (
     filtered_df
     .groupby(["L1/L2/L3", "Status"])
     .size()
     .unstack(fill_value=0)
-    .reindex(level_order, fill_value=0)
 )
 
-# remove levels with total = 0
 level_status = level_status[level_status.sum(axis=1) > 0]
 
 if not level_status.empty:
     fig2, ax2 = plt.subplots(figsize=(5, 3))
-
-    level_status.plot(
-        kind="bar",
-        ax=ax2,
-        width=0.5
-    )
+    level_status.plot(kind="bar", ax=ax2, width=0.5)
 
     ax2.set_title("Ticket Status by Level", fontsize=11)
     ax2.set_xlabel("Level")
     ax2.set_ylabel("Count")
     ax2.tick_params(axis="x", rotation=0)
 
-    ax2.legend(
-        title="Status",
-        bbox_to_anchor=(1.02, 1),
-        loc="upper left"
-    )
-
+    ax2.legend(title="Status", bbox_to_anchor=(1.02, 1), loc="upper left")
     col_right.pyplot(fig2, use_container_width=True)
 else:
     col_right.info("No level/status data available.")
