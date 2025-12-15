@@ -60,8 +60,15 @@ if view == "This Week":
     end_date = start_date + timedelta(days=6)
 
 elif view == "Last Week":
-    end_date = today - timedelta(days=today.weekday() + 1)
-    start_date = end_date - timedelta(days=6)
+    today_iso = today.isocalendar()
+    last_week_num = today_iso.week - 1
+    year = today_iso.year
+
+    # Start = Monday of last week
+    start_date = datetime.strptime(f"{year}-W{last_week_num}-1", "%G-W%V-%u").date()
+
+    # End = Sunday of last week
+    end_date = datetime.strptime(f"{year}-W{last_week_num}-7", "%G-W%V-%u").date()
 
 elif view == "This Month":
     start_date = today.replace(day=1)
@@ -73,10 +80,10 @@ elif view == "This Year":
 
 # Apply filter ensuring only CURRENT YEAR DATA is included
 filtered_df = df[
-    (pd.to_datetime(df["Request Date"]).dt.date >= start_date) &
-    (pd.to_datetime(df["Request Date"]).dt.date <= end_date) &
-    (pd.to_datetime(df["Request Date"]).dt.year == today.year)
+    (df["Request Date"] >= start_date) &
+    (df["Request Date"] <= end_date)
 ]
+
 
 # -------------------------------------------------
 # HEADER
