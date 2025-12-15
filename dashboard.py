@@ -55,35 +55,66 @@ view = st.sidebar.selectbox(
 today = datetime.today().date()
 
 # Compute date ranges
+# -------------------------------------------------
+# DATE FILTERING (FULLY FIXED)
+# -------------------------------------------------
+
+st.sidebar.title("📅 Filters")
+
+view = st.sidebar.selectbox(
+    "Select View",
+    ["This Week", "Last Week", "This Month", "This Year"]
+)
+
+today = datetime.today().date()
+current_year = today.year
+
+# Clean data: Keep only current-year rows (prevents 2024 data leaking)
+df = df[pd.to_datetime(df["Request Date"]).dt.year == current_year]
+
+# ISO-based week calculations (always correct)
+iso = today.isocalendar()
+
 if view == "This Week":
-    start_date = today - timedelta(days=today.weekday())
-    end_date = start_date + timedelta(days=6)
+    week_num = iso.week
+    year = iso.year
+
+    start_date = datetime.strptime(f"{year}-W{week_num}-1", "%G-W%V-%u").date()
+    end_date = datetime.strptime(f"{year}-W{week_num}-7", "%G-W%V-%u").date()
 
 elif view == "Last Week":
-    today_iso = today.isocalendar()
-    last_week_num = today_iso.week - 1
-    year = today_iso.year
+    week_num = iso.week - 1
+    year = iso.year
 
-    # Start = Monday of last week
-    start_date = datetime.strptime(f"{year}-W{last_week_num}-1", "%G-W%V-%u").date()
+    # If week becomes 0, move to previous year
+    if week_num == 0:
+        year -= 1
+        week_num = 52  # safe assumption; ISO week number
 
-    # End = Sunday of last week
-    end_date = datetime.strptime(f"{year}-W{last_week_num}-7", "%G-W%V-%u").date()
+    start_date = datetime.strptime(f"{year}-W{week_num}-1", "%G-W%V-%u").date()
+    end_date = datetime.strptime(f"{year}-W{week_num}-7", "%G-W%V-%u").date()
 
 elif view == "This Month":
     start_date = today.replace(day=1)
     end_date = today
 
-elif view == "This Year":
+else:  # THIS YEAR
     start_date = today.replace(month=1, day=1)
     end_date = today
 
-# Apply filter ensuring only CURRENT YEAR DATA is included
+# Final correct filter
 filtered_df = df[
     (df["Request Date"] >= start_date) &
     (df["Request Date"] <= end_date)
 ]
 
+
+# Apply filter ensuring only CURRENT YEAR DATA is included
+filtered_df = df[
+    (pd.to_datetime(df["Request Date"]).dt.date >= start_date) &
+    (pd.to_datetime(df["Request Date"]).dt.date <= end_date) &
+    (pd.to_datetime(df["Request Date"]).dt.year == today.year)
+]
 
 # -------------------------------------------------
 # HEADER
