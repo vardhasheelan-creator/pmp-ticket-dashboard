@@ -152,13 +152,22 @@ if not status_counts.empty:
     col_left.pyplot(fig1)
 else:
     col_left.info("No status data available for this period.")
-
 # ---- BAR CHART: Level vs Status ----
+
+# 🔧 Normalize Level values
+filtered_df["L1/L2/L3"] = (
+    filtered_df["L1/L2/L3"]
+    .astype(str)
+    .str.strip()
+    .str.upper()
+)
+
 level_status = (
     filtered_df
     .groupby(["L1/L2/L3", "Status"])
     .size()
     .unstack(fill_value=0)
+    .reindex(["L1", "L2", "L3"])  # enforce correct order
 )
 
 if (
@@ -174,6 +183,7 @@ if (
     col_right.pyplot(fig2)
 else:
     col_right.info("No level/status data available for chart.")
+
 
 # -------------------------------------------------
 # DOWNLOAD
