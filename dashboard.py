@@ -27,12 +27,9 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    # 🔥 CRITICAL FIX: Clean + normalize dates
     df["Request Date"] = (
         pd.to_datetime(
-            df["Request Date"]
-            .astype(str)
-            .str.strip(),
+            df["Request Date"].astype(str).str.strip(),
             dayfirst=True,
             errors="coerce"
         )
@@ -67,7 +64,7 @@ elif view == "This Month":
     start_date = today.replace(day=1)
     end_date = today
 
-else:  # This Year
+else:
     start_date = today.replace(month=1, day=1)
     end_date = today
 
@@ -125,19 +122,19 @@ if not filtered_df.empty:
         .unstack(fill_value=0)
         .reset_index()
     )
-    st.dataframe(category_table, width="stretch")
+    st.dataframe(category_table, use_container_width=True)
 else:
     st.info("No category data available for this period.")
 
 # -------------------------------------------------
-# CHARTS (SAFE)
+# CHARTS
 # -------------------------------------------------
 st.divider()
 st.subheader("📊 Visual Insights")
 
 col_left, col_right = st.columns(2)
 
-# ---- PIE CHART: Status Distribution ----
+# ---- PIE CHART ----
 status_counts = filtered_df["Status"].value_counts()
 
 if not status_counts.empty:
@@ -151,8 +148,9 @@ if not status_counts.empty:
     ax1.set_title("Ticket Status Distribution")
     col_left.pyplot(fig1)
 else:
-    col_left.info("No status data available for this period.")
-# ---- BAR CHART: Level vs Status (FIXED) ----
+    col_left.info("No status data available.")
+
+# ---- BAR CHART (SINGLE, FIXED) ----
 level_order = ["L1", "L2", "L3"]
 
 level_status = (
@@ -160,11 +158,14 @@ level_status = (
     .groupby(["L1/L2/L3", "Status"])
     .size()
     .unstack(fill_value=0)
-    .reindex(level_order, fill_value=0)   # 🔥 force consistent x-axis
+    .reindex(level_order, fill_value=0)
 )
 
-if level_status.sum().sum() > 0:
-    fig2, ax2 = plt.subplots(figsize=(5, 3))  # smaller chart
+# remove levels with total = 0
+level_status = level_status[level_status.sum(axis=1) > 0]
+
+if not level_status.empty:
+    fig2, ax2 = plt.subplots(figsize=(5, 3))
 
     level_status.plot(
         kind="bar",
@@ -177,37 +178,15 @@ if level_status.sum().sum() > 0:
     ax2.set_ylabel("Count")
     ax2.tick_params(axis="x", rotation=0)
 
-    # ✅ move legend OUTSIDE (no overlap)
     ax2.legend(
         title="Status",
         bbox_to_anchor=(1.02, 1),
-        loc="upper left",
-        borderaxespad=0
+        loc="upper left"
     )
 
     col_right.pyplot(fig2, use_container_width=True)
 else:
-    col_right.info("No level/status data available for chart.")
-
-
-# 🔥 REMOVE levels with total = 0 (fixes empty L2 bar)
-level_status = level_status[level_status.sum(axis=1) > 0]
-
-
-if (
-    not level_status.empty
-    and level_status.select_dtypes("number").sum().sum() > 0
-):
-    fig2, ax2 = plt.subplots()
-    level_status.plot(kind="bar", ax=ax2)
-    ax2.set_title("Ticket Status by Level")
-    ax2.set_xlabel("Level")
-    ax2.set_ylabel("Count")
-    ax2.tick_params(axis="x", rotation=0)
-    col_right.pyplot(fig2)
-else:
-    col_right.info("No level/status data available for chart.")
-
+    col_right.info("No level/status data available.")
 
 # -------------------------------------------------
 # DOWNLOAD
