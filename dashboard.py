@@ -27,12 +27,20 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    # Clean & normalize date formats (handles YYYY-MM-DD, MM/DD/YYYY, DD-MM-YYYY)
+    # 🔒 HARD SAFETY FILTER: only rows that CONTAIN 2025
+    df = df[df["Request Date"].astype(str).str.contains("2025", na=False)]
+
+    # Now safely parse dates (DD-MM-YYYY)
     df["Request Date"] = pd.to_datetime(
         df["Request Date"].astype(str).str.strip(),
-        format="mixed",       # handles mixed formats automatically
+        dayfirst=True,
         errors="coerce"
     ).dt.date
+
+    # Drop anything that still failed
+    df = df.dropna(subset=["Request Date"])
+
+    return df
 
     # Remove dates older than this year (prevents 2024 showing in 2025 filters)
     current_year = datetime.today().year
