@@ -27,14 +27,14 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    df["Request Date"] = (
-        pd.to_datetime(
-            df["Request Date"].astype(str).str.strip(),
-            dayfirst=True,
-            errors="coerce"
-        )
-        .dt.date
+    # ✅ CORRECT: ISO-safe date parsing
+    df["Request Date"] = pd.to_datetime(
+        df["Request Date"].astype(str).str.strip(),
+        errors="coerce"
     )
+
+    # remove rows with invalid dates
+    df = df.dropna(subset=["Request Date"])
 
     return df
 
@@ -50,7 +50,7 @@ view = st.sidebar.selectbox(
     ["This Week", "Last Week", "This Month", "This Year"]
 )
 
-today = datetime.today().date()
+today = datetime.today()
 
 if view == "This Week":
     start_date = today - timedelta(days=today.weekday())
@@ -64,7 +64,7 @@ elif view == "This Month":
     start_date = today.replace(day=1)
     end_date = today
 
-else:
+else:  # This Year
     start_date = today.replace(month=1, day=1)
     end_date = today
 
@@ -77,7 +77,9 @@ filtered_df = df[
 # HEADER
 # -------------------------------------------------
 st.title("📊 PMP Automated Ticket Dashboard")
-st.caption(f"Showing data from {start_date} to {end_date}")
+st.caption(
+    f"Showing data from {start_date.date()} to {end_date.date()} | Rows: {len(filtered_df)}"
+)
 
 # -------------------------------------------------
 # METRICS
@@ -150,7 +152,7 @@ if not status_counts.empty:
 else:
     col_left.info("No status data available.")
 
-# ---- BAR CHART (SINGLE, FIXED) ----
+# ---- BAR CHART ----
 level_order = ["L1", "L2", "L3"]
 
 level_status = (
@@ -161,17 +163,12 @@ level_status = (
     .reindex(level_order, fill_value=0)
 )
 
-# remove levels with total = 0
 level_status = level_status[level_status.sum(axis=1) > 0]
 
 if not level_status.empty:
     fig2, ax2 = plt.subplots(figsize=(5, 3))
 
-    level_status.plot(
-        kind="bar",
-        ax=ax2,
-        width=0.5
-    )
+    level_status.plot(kind="bar", ax=ax2, width=0.5)
 
     ax2.set_title("Ticket Status by Level", fontsize=11)
     ax2.set_xlabel("Level")
