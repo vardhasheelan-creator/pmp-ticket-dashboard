@@ -52,35 +52,46 @@ view = st.sidebar.selectbox(
 
 today = datetime.today().date()
 
+# -------------------------------------------------
+# DATE FILTERING (FIXED)
+# -------------------------------------------------
 if view == "This Week":
     start_date = today - timedelta(days=today.weekday())
     end_date = start_date + timedelta(days=6)
+
+    filtered_df = df[
+        (df["Request Date"] >= start_date) &
+        (df["Request Date"] <= end_date)
+    ]
 
 elif view == "Last Week":
     end_date = today - timedelta(days=today.weekday() + 1)
     start_date = end_date - timedelta(days=6)
 
+    filtered_df = df[
+        (df["Request Date"] >= start_date) &
+        (df["Request Date"] <= end_date)
+    ]
+
 elif view == "This Month":
-    start_date = today.replace(day=1)
-    end_date = today.replace(
-        year=today.year,
-        month=today.month
-    )
+    filtered_df = df[
+        (df["Request Date"].apply(lambda d: d.month) == today.month) &
+        (df["Request Date"].apply(lambda d: d.year) == today.year)
+    ]
 
-else:
-    start_date = today.replace(month=1, day=1)
-    end_date = today
-
-filtered_df = df[
-    (df["Request Date"] >= start_date) &
-    (df["Request Date"] <= end_date)
-]
+else:  # This Year
+    filtered_df = df[
+        df["Request Date"].apply(lambda d: d.year) == today.year
+    ]
 
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
 st.title("📊 PMP Automated Ticket Dashboard")
-st.caption(f"Showing data from {start_date} to {end_date}")
+st.caption(
+    f"Showing data from {filtered_df['Request Date'].min()} "
+    f"to {filtered_df['Request Date'].max()}"
+)
 
 # -------------------------------------------------
 # METRICS
@@ -153,7 +164,7 @@ if not status_counts.empty:
 else:
     col_left.info("No status data available.")
 
-# ---- BAR CHART (SINGLE, FIXED) ----
+# ---- BAR CHART ----
 level_order = ["L1", "L2", "L3"]
 
 level_status = (
@@ -164,17 +175,11 @@ level_status = (
     .reindex(level_order, fill_value=0)
 )
 
-# remove levels with total = 0
 level_status = level_status[level_status.sum(axis=1) > 0]
 
 if not level_status.empty:
     fig2, ax2 = plt.subplots(figsize=(5, 3))
-
-    level_status.plot(
-        kind="bar",
-        ax=ax2,
-        width=0.5
-    )
+    level_status.plot(kind="bar", ax=ax2, width=0.5)
 
     ax2.set_title("Ticket Status by Level", fontsize=11)
     ax2.set_xlabel("Level")
