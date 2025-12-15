@@ -167,8 +167,12 @@ level_status = (
     .groupby(["L1/L2/L3", "Status"])
     .size()
     .unstack(fill_value=0)
-    .reindex(["L1", "L2", "L3"])  # enforce correct order
+    .reindex(["L1", "L2", "L3"])
 )
+
+# 🔥 REMOVE levels with total = 0 (fixes empty L2 bar)
+level_status = level_status[level_status.sum(axis=1) > 0]
+
 
 if (
     not level_status.empty
