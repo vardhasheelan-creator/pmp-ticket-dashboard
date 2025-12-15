@@ -27,14 +27,16 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    df["Request Date"] = (
-        pd.to_datetime(
-            df["Request Date"].astype(str).str.strip(),
-            dayfirst=True,
-            errors="coerce"
-        )
-        .dt.date
-    )
+    # Clean & normalize date formats (handles YYYY-MM-DD, MM/DD/YYYY, DD-MM-YYYY)
+    df["Request Date"] = pd.to_datetime(
+        df["Request Date"].astype(str).str.strip(),
+        format="mixed",       # handles mixed formats automatically
+        errors="coerce"
+    ).dt.date
+
+    # Remove dates older than this year (prevents 2024 showing in 2025 filters)
+    current_year = datetime.today().year
+    df = df[df["Request Date"] >= datetime(current_year, 1, 1).date()]
 
     return df
 
@@ -52,6 +54,7 @@ view = st.sidebar.selectbox(
 
 today = datetime.today().date()
 
+# Compute date ranges
 if view == "This Week":
     start_date = today - timedelta(days=today.weekday())
     end_date = start_date + timedelta(days=6)
@@ -64,13 +67,15 @@ elif view == "This Month":
     start_date = today.replace(day=1)
     end_date = today
 
-else:
+elif view == "This Year":
     start_date = today.replace(month=1, day=1)
     end_date = today
 
+# Apply filter ensuring only CURRENT YEAR DATA is included
 filtered_df = df[
-    (df["Request Date"] >= start_date) &
-    (df["Request Date"] <= end_date)
+    (pd.to_datetime(df["Request Date"]).dt.date >= start_date) &
+    (pd.to_datetime(df["Request Date"]).dt.date <= end_date) &
+    (pd.to_datetime(df["Request Date"]).dt.year == today.year)
 ]
 
 # -------------------------------------------------
@@ -150,7 +155,7 @@ if not status_counts.empty:
 else:
     col_left.info("No status data available.")
 
-# ---- BAR CHART (SINGLE, FIXED) ----
+# ---- BAR CHART ----
 level_order = ["L1", "L2", "L3"]
 
 level_status = (
@@ -161,7 +166,7 @@ level_status = (
     .reindex(level_order, fill_value=0)
 )
 
-# remove levels with total = 0
+# Remove rows with zero total
 level_status = level_status[level_status.sum(axis=1) > 0]
 
 if not level_status.empty:
