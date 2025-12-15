@@ -114,10 +114,6 @@ col2.metric("Open", (filtered_df["Status"] == "Open").sum())
 col3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
 col4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
 
-st.write(
-    filtered_df[~filtered_df["Status"].isin(["Open", "Closed", "In-Progress"])]
-    [["ID", "Request Date", "Status"]]
-)
 
 # -------------------------------------------------
 # TICKET OWNERSHIP
