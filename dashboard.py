@@ -152,23 +152,43 @@ if not status_counts.empty:
     col_left.pyplot(fig1)
 else:
     col_left.info("No status data available for this period.")
-# ---- BAR CHART: Level vs Status ----
-
-# 🔧 Normalize Level values
-filtered_df["L1/L2/L3"] = (
-    filtered_df["L1/L2/L3"]
-    .astype(str)
-    .str.strip()
-    .str.upper()
-)
+# ---- BAR CHART: Level vs Status (FIXED) ----
+level_order = ["L1", "L2", "L3"]
 
 level_status = (
     filtered_df
     .groupby(["L1/L2/L3", "Status"])
     .size()
     .unstack(fill_value=0)
-    .reindex(["L1", "L2", "L3"])
+    .reindex(level_order, fill_value=0)   # 🔥 force consistent x-axis
 )
+
+if level_status.sum().sum() > 0:
+    fig2, ax2 = plt.subplots(figsize=(5, 3))  # smaller chart
+
+    level_status.plot(
+        kind="bar",
+        ax=ax2,
+        width=0.5
+    )
+
+    ax2.set_title("Ticket Status by Level", fontsize=11)
+    ax2.set_xlabel("Level")
+    ax2.set_ylabel("Count")
+    ax2.tick_params(axis="x", rotation=0)
+
+    # ✅ move legend OUTSIDE (no overlap)
+    ax2.legend(
+        title="Status",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        borderaxespad=0
+    )
+
+    col_right.pyplot(fig2, use_container_width=True)
+else:
+    col_right.info("No level/status data available for chart.")
+
 
 # 🔥 REMOVE levels with total = 0 (fixes empty L2 bar)
 level_status = level_status[level_status.sum(axis=1) > 0]
