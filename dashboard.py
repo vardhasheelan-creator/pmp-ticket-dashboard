@@ -21,19 +21,17 @@ GOOGLE_SHEET_CSV_URL = (
 )
 
 # -------------------------------------------------
-# LOAD DATA (AUTO REFRESH EVERY 60s)
+# LOAD DATA
 # -------------------------------------------------
 @st.cache_data(ttl=60)
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    df["Request Date"] = (
-        pd.to_datetime(
-            df["Request Date"].astype(str).str.strip(),
-            dayfirst=True,
-            errors="coerce"
-        )
-        .dt.date
+    # ✅ FINAL DATE PARSE (YYYY-MM-DD only)
+    df["Request Date"] = pd.to_datetime(
+        df["Request Date"],
+        format="%Y-%m-%d",
+        errors="coerce"
     )
 
     return df
@@ -51,43 +49,59 @@ view = st.sidebar.selectbox(
 )
 
 today = datetime.today().date()
+weekday = today.weekday()  # Monday = 0
 
-if view == "This Week":
-    start_date = today - timedelta(days=today.weekday())
-    end_date = start_date + timedelta(days=6)
+# Week ranges (NO ISO WEEKS — SAFE)
+this_week_start = today - timedelta(days=weekday)
+this_week_end = today
 
-elif view == "Last Week":
-    end_date = today - timedelta(days=today.weekday() + 1)
-    start_date = end_date - timedelta(days=6)
+last_week_start = this_week_start - timedelta(days=7)
+last_week_end = this_week_start - timedelta(days=1)
 
-elif view == "This Month":
-    start_date = today.replace(day=1)
-    end_date = today
+# -------------------------------------------------
+# APPLY FILTERS (🔥 THIS IS THE FIX)
+# -------------------------------------------------
+if view == "This Month":
+    filtered_df = df[
+        (df["Request Date"].dt.year == today.year) &
+        (df["Request Date"].dt.month == today.month)
+    ]
 
-else:
-    start_date = today.replace(month=1, day=1)
-    end_date = today
+elif view == "This Year":
+    filtered_df = df[
+        df["Request Date"].dt.year == today.year
+    ]
 
-filtered_df = df[
-    (df["Request Date"] >= start_date) &
-    (df["Request Date"] <= end_date)
-]
+elif view == "This Week":
+    filtered_df = df[
+        (df["Request Date"].dt.date >= this_week_start) &
+        (df["Request Date"].dt.date <= this_week_end)
+    ]
+
+else:  # Last Week
+    filtered_df = df[
+        (df["Request Date"].dt.date >= last_week_start) &
+        (df["Request Date"].dt.date <= last_week_end)
+    ]
 
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
 st.title("📊 PMP Automated Ticket Dashboard")
-st.caption(f"Showing data from {start_date} to {end_date}")
+
+st.caption(
+    f"Showing {view} data | Rows: {len(filtered_df)}"
+)
 
 # -------------------------------------------------
 # METRICS
 # -------------------------------------------------
-col1, col2, col3, col4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-col1.metric("Total Tickets", len(filtered_df))
-col2.metric("Open", (filtered_df["Status"] == "Open").sum())
-col3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
-col4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
+c1.metric("Total Tickets", len(filtered_df))
+c2.metric("Open", (filtered_df["Status"] == "Open").sum())
+c3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
+c4.metric("In-Progress", (filtered_df["Status"] == "In-Progress").sum())
 
 # -------------------------------------------------
 # TICKET OWNERSHIP
@@ -103,10 +117,10 @@ def closed_by(level):
         ]
     )
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Closed by L1", closed_by("L1"))
-c2.metric("Closed by L2", closed_by("L2"))
-c3.metric("Closed by L3", closed_by("L3"))
+l1, l2, l3 = st.columns(3)
+l1.metric("Closed by L1", closed_by("L1"))
+l2.metric("Closed by L2", closed_by("L2"))
+l3.metric("Closed by L3", closed_by("L3"))
 
 # -------------------------------------------------
 # CATEGORY TABLE
@@ -124,7 +138,7 @@ if not filtered_df.empty:
     )
     st.dataframe(category_table, use_container_width=True)
 else:
-    st.info("No category data available for this period.")
+    st.info("No category data available.")
 
 # -------------------------------------------------
 # CHARTS
@@ -148,45 +162,28 @@ if not status_counts.empty:
     ax1.set_title("Ticket Status Distribution")
     col_left.pyplot(fig1)
 else:
-    col_left.info("No status data available.")
+    col_left.info("No status data.")
 
-# ---- BAR CHART (SINGLE, FIXED) ----
-level_order = ["L1", "L2", "L3"]
-
+# ---- BAR CHART ----
 level_status = (
     filtered_df
     .groupby(["L1/L2/L3", "Status"])
     .size()
     .unstack(fill_value=0)
-    .reindex(level_order, fill_value=0)
 )
 
-# remove levels with total = 0
 level_status = level_status[level_status.sum(axis=1) > 0]
 
 if not level_status.empty:
     fig2, ax2 = plt.subplots(figsize=(5, 3))
-
-    level_status.plot(
-        kind="bar",
-        ax=ax2,
-        width=0.5
-    )
-
-    ax2.set_title("Ticket Status by Level", fontsize=11)
+    level_status.plot(kind="bar", ax=ax2)
+    ax2.set_title("Ticket Status by Level")
     ax2.set_xlabel("Level")
     ax2.set_ylabel("Count")
     ax2.tick_params(axis="x", rotation=0)
-
-    ax2.legend(
-        title="Status",
-        bbox_to_anchor=(1.02, 1),
-        loc="upper left"
-    )
-
     col_right.pyplot(fig2, use_container_width=True)
 else:
-    col_right.info("No level/status data available.")
+    col_right.info("No level/status data.")
 
 # -------------------------------------------------
 # DOWNLOAD
