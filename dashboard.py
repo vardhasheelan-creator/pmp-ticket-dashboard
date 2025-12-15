@@ -27,6 +27,7 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
+    # 🔥 CRITICAL FIX: Clean + normalize dates
     df["Request Date"] = (
         pd.to_datetime(
             df["Request Date"]
@@ -38,16 +39,9 @@ def load_data():
         .dt.date
     )
 
-    # ✅ FIX duplicate L2 / L1 / L3 issue
-    df["L1/L2/L3"] = (
-        df["L1/L2/L3"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-    )
-
     return df
 
+df = load_data()
 
 # -------------------------------------------------
 # SIDEBAR FILTERS
