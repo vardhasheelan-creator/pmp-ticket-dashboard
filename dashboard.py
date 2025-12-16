@@ -55,7 +55,6 @@ def load_data():
 
 df = load_data()
 
-st.write(df["Request Date"].head(20))
 
 # -------------------------------------------------
 # SIDEBAR FILTERS
