@@ -107,8 +107,7 @@ st.caption(f"Showing data from {start_date} to {end_date}")
 col1, col2, col3, col4 = st.columns(4)
 
 valid_statuses = ["Open", "Closed", "In-Progress"]
-total_tickets = filtered_df[filtered_df["Status"].isin(valid_statuses)].shape[0]
-
+total_tickets = filtered_df["ID"].nunique()
 col1.metric("Total Tickets", total_tickets)
 col2.metric("Open", (filtered_df["Status"] == "Open").sum())
 col3.metric("Closed", (filtered_df["Status"] == "Closed").sum())
