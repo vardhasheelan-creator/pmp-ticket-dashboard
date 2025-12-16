@@ -27,24 +27,31 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    # Parse all dates (Google Sheets exports mixed formats)
+    # keep only 2025 rows (string-level safety)
+    df = df[df["Request Date"].astype(str).str.contains("2025", na=False)]
+
+    # parse DD-MM-YYYY safely
     df["Request Date"] = pd.to_datetime(
         df["Request Date"].astype(str).str.strip(),
         dayfirst=True,
         errors="coerce"
     ).dt.date
 
-    # Remove invalid dates
+    # drop bad dates
     df = df.dropna(subset=["Request Date"])
 
-    # Remove older-year data (prevents 2024 entries)
+    # 🔥 KEY FIX: remove duplicate tickets
+    df = df.drop_duplicates(subset=["ID"])
+
+    return df
+
+    # Remove dates older than this year (prevents 2024 showing in 2025 filters)
     current_year = datetime.today().year
     df = df[df["Request Date"] >= datetime(current_year, 1, 1).date()]
 
-    # Remove duplicates
-    df = df.drop_duplicates(subset=["ID"], keep="first")
-
     return df
+
+df = load_data()
 
 
 # -------------------------------------------------
