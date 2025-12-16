@@ -27,26 +27,22 @@ GOOGLE_SHEET_CSV_URL = (
 def load_data():
     df = pd.read_csv(GOOGLE_SHEET_CSV_URL)
 
-    # Parse dates (Google Sheets mixes formats)
+    # Parse dates safely
     df["Request Date"] = pd.to_datetime(
         df["Request Date"].astype(str).str.strip(),
         dayfirst=True,
         errors="coerce"
     )
 
-    # Remove invalid dates
+    # Drop invalid
     df = df.dropna(subset=["Request Date"])
 
-    # Keep only current year's data
+    # Keep only the current year
     current_year = datetime.today().year
     df = df[df["Request Date"].dt.year == current_year]
 
-    # Convert to plain date
+    # Finally convert to date
     df["Request Date"] = df["Request Date"].dt.date
-
-    # Remove duplicates safely
-    if "ID" in df.columns:
-        df = df.drop_duplicates(subset=["ID"], keep="first")
 
     return df
 
@@ -96,11 +92,9 @@ elif view == "This Year":
 
 # Apply filter ensuring only CURRENT YEAR DATA is included
 filtered_df = df[
-    (pd.to_datetime(df["Request Date"]).dt.date >= start_date) &
-    (pd.to_datetime(df["Request Date"]).dt.date <= end_date) &
-    (pd.to_datetime(df["Request Date"]).dt.year == today.year)
+    (df["Request Date"] >= start_date) &
+    (df["Request Date"] <= end_date)
 ]
-
 # -------------------------------------------------
 # HEADER
 # -------------------------------------------------
