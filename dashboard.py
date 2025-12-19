@@ -114,6 +114,9 @@ tab_dashboard, tab_open, tab_charts = st.tabs(
 # =================================================
 with tab_dashboard:
 
+    # -------------------------------
+    # TOP KPIs
+    # -------------------------------
     col1, col2, col3, col4 = st.columns(4)
 
     total_tickets = len(filtered_df)
@@ -125,6 +128,24 @@ with tab_dashboard:
     col2.metric("Open", open_tickets)
     col3.metric("Closed", closed_tickets)
     col4.metric("In-Progress", in_progress)
+
+    # -------------------------------
+    # INFLOW vs CLOSURE (RESTORED)
+    # -------------------------------
+    st.divider()
+    st.subheader("📈 Inflow vs Closure (%)")
+
+    if total_tickets > 0:
+        closure_pct = int((closed_tickets / total_tickets) * 100)
+        pending_pct = 100 - closure_pct
+
+        c1, c2 = st.columns(2)
+        c1.metric("Closure Rate", f"{closure_pct}%")
+        c2.metric("Pending", f"{pending_pct}%")
+
+        st.progress(closure_pct / 100)
+    else:
+        st.info("No tickets available for the selected period.")
 
     # -------------------------------
     # OWNERSHIP BY LEVEL
@@ -145,7 +166,7 @@ with tab_dashboard:
     st.dataframe(ownership, hide_index=True)
 
     # -------------------------------
-    # PMP CATEGORIES – PERCENTAGE VIEW
+    # CATEGORY PERCENTAGE VIEW
     # -------------------------------
     st.divider()
     st.subheader("📁 PMP Categories – Percentage View")
@@ -171,15 +192,13 @@ with tab_dashboard:
         cat["Percentage"] = cat["RoundedPct"].astype(str) + "%"
         cat = cat[["Category", "Tickets", "Percentage"]]
 
-        # ---- GREEN highlight for top category
+        # Highlight top category (green)
         top_tickets = cat["Tickets"].max()
 
         def highlight_top_category(row):
             if row["Tickets"] == top_tickets:
                 return [
-                    "background-color: #1f3d2b; "
-                    "color: #b7f5c6; "
-                    "font-weight: bold"
+                    "background-color: #1f3d2b; color: #b7f5c6; font-weight: bold"
                 ] * len(row)
             return [""] * len(row)
 
