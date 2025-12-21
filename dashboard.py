@@ -166,7 +166,7 @@ with tab_dashboard:
     st.dataframe(ownership, hide_index=True)
 
 # -------------------------------
-# CATEGORY PERCENTAGE VIEW (FINAL – CLEAN)
+# CATEGORY PERCENTAGE VIEW – INLINE CHIPS + DETAIL DRAWER
 # -------------------------------
 st.divider()
 st.subheader("📁 PMP Categories – Percentage View")
@@ -194,27 +194,27 @@ if total_tickets > 0:
     cat["Closed"] = cat["Category"].map(closed_map).fillna(0).astype(int)
     cat["In-Progress"] = cat["Category"].map(inprog_map).fillna(0).astype(int)
 
-    # Status column (clean, readable)
-    def build_status(row):
+    # Status Snapshot (chips-style text)
+    def status_snapshot(row):
         parts = []
         if row["Closed"] > 0:
             parts.append(f"🟢 Closed={row['Closed']}")
         if row["In-Progress"] > 0:
-            parts.append(f"🟠 In-Progress={row['In-Progress']}")
+            parts.append(f"🟠 In-Prog={row['In-Progress']}")
         return " · ".join(parts) if parts else "-"
 
-    cat["Status"] = cat.apply(build_status, axis=1)
+    cat["Status Snapshot"] = cat.apply(status_snapshot, axis=1)
 
-    # Levels column
-    def build_levels(category):
+    # Owner Snapshot (L1/L2/L3 counts)
+    def owner_snapshot(category):
         sub = filtered_df[filtered_df["Category"] == category]
         grp = sub.groupby("L1/L2/L3").size()
         return " · ".join([f"{lvl}({cnt})" for lvl, cnt in grp.items()])
 
-    cat["Levels"] = cat["Category"].apply(build_levels)
+    cat["Owner Snapshot"] = cat["Category"].apply(owner_snapshot)
 
     display_cat = cat[
-        ["Category", "Tickets", "Percentage", "Status", "Levels"]
+        ["Category", "Tickets", "Percentage", "Status Snapshot", "Owner Snapshot"]
     ]
 
     # Highlight top category
@@ -230,6 +230,32 @@ if total_tickets > 0:
         hide_index=True,
         use_container_width=True
     )
+
+    # -------------------------------
+    # SINGLE DETAIL DRAWER
+    # -------------------------------
+    st.markdown("### 🔎 Category-wise Detailed Breakdown")
+
+    selected_category = st.selectbox(
+        "Select category to view details",
+        display_cat["Category"].tolist()
+    )
+
+    detail_df = filtered_df[filtered_df["Category"] == selected_category]
+
+    st.markdown(f"#### 📂 {selected_category} — Detailed View")
+
+    for status in ["Closed", "In-Progress"]:
+        grp = (
+            detail_df[detail_df["Status"] == status]
+            .groupby("L1/L2/L3")
+            .size()
+        )
+
+        if not grp.empty:
+            st.markdown(f"**{status}:**")
+            for lvl, cnt in grp.items():
+                st.write(f"• {lvl} = {cnt}")
 
 else:
     st.info("No category data available.")
