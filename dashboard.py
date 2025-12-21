@@ -27,7 +27,7 @@ OPEN_TICKETS_URL = (
 )
 
 # -------------------------------------------------
-# LOAD MAIN DASHBOARD DATA
+# LOAD DATA
 # -------------------------------------------------
 @st.cache_data(ttl=60)
 def load_dashboard_data():
@@ -38,14 +38,10 @@ def load_dashboard_data():
         errors="coerce"
     )
     df = df.dropna(subset=["Request Date"])
-    current_year = datetime.today().year
-    df = df[df["Request Date"].dt.year == current_year]
     df["Request Date"] = df["Request Date"].dt.normalize()
     return df
 
-# -------------------------------------------------
-# LOAD OPEN TICKETS DATA
-# -------------------------------------------------
+
 @st.cache_data(ttl=60)
 def load_open_tickets():
     try:
@@ -53,11 +49,12 @@ def load_open_tickets():
     except Exception:
         return pd.DataFrame()
 
+
 df = load_dashboard_data()
 open_df = load_open_tickets()
 
 # -------------------------------------------------
-# SIDEBAR FILTERS
+# FILTERS
 # -------------------------------------------------
 st.sidebar.title("📅 Filters")
 
@@ -71,18 +68,12 @@ today = datetime.today().date()
 if view == "This Week":
     start_date = today - timedelta(days=today.weekday())
     end_date = start_date + timedelta(days=6)
-
 elif view == "Last Week":
-    iso = today.isocalendar()
-    start_date = datetime.strptime(
-        f"{iso.year}-W{iso.week - 1}-1", "%G-W%V-%u"
-    ).date()
+    start_date = today - timedelta(days=today.weekday() + 7)
     end_date = start_date + timedelta(days=6)
-
 elif view == "This Month":
     start_date = today.replace(day=1)
     end_date = today
-
 else:
     start_date = today.replace(month=1, day=1)
     end_date = today
@@ -98,9 +89,6 @@ filtered_df = df[
 st.title("📊 PMP Ticket Dashboard")
 st.caption(f"Showing data from {start_date} to {end_date}")
 
-# -------------------------------------------------
-# TABS
-# -------------------------------------------------
 tab_dashboard, tab_open, tab_charts = st.tabs(
     ["📊 Dashboard", "📌 Overall Open Tickets", "📈 Visual Insights"]
 )
@@ -112,154 +100,139 @@ with tab_dashboard:
 
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
-    total_tickets = len(filtered_df)
-    open_tickets = (filtered_df["Status"] == "Open").sum()
-    closed_tickets = (filtered_df["Status"] == "Closed").sum()
-    in_progress = (filtered_df["Status"] == "In-Progress").sum()
+    total = len(filtered_df)
+    closed = (filtered_df["Status"] == "Closed").sum()
+    open_ = (filtered_df["Status"] == "Open").sum()
+    in_prog = (filtered_df["Status"] == "In-Progress").sum()
 
-    col1.metric("Total Tickets", total_tickets)
-    col2.metric("Open", open_tickets)
-    col3.metric("Closed", closed_tickets)
-    col4.metric("In-Progress", in_progress)
+    col1.metric("Total Tickets", total)
+    col2.metric("Open", open_)
+    col3.metric("Closed", closed)
+    col4.metric("In-Progress", in_prog)
 
     # Inflow vs Closure
     st.divider()
     st.subheader("📈 Inflow vs Closure (%)")
 
-    if total_tickets > 0:
-        closure_pct = int((closed_tickets / total_tickets) * 100)
-        pending_pct = 100 - closure_pct
+    if total > 0:
+        closure_pct = int((closed / total) * 100)
+        st.progress(closure_pct / 100)
         c1, c2 = st.columns(2)
         c1.metric("Closure Rate", f"{closure_pct}%")
-        c2.metric("Pending", f"{pending_pct}%")
-        st.progress(closure_pct / 100)
+        c2.metric("Pending", f"{100 - closure_pct}%")
 
     # Ownership by Level
     st.divider()
     st.subheader("🧑‍💼 Ticket Ownership by Level")
 
     ownership = (
-        filtered_df
-        .groupby(["L1/L2/L3", "Status"])
+        filtered_df.groupby(["L1/L2/L3", "Status"])
         .size()
         .unstack(fill_value=0)
         .reindex(["L1", "L2", "L3"])
         .fillna(0)
         .reset_index()
     )
+
     st.dataframe(ownership, hide_index=True)
 
     # -------------------------------------------------
-    # PMP CATEGORIES – FINAL VERSION
+    # PMP CATEGORIES – CLEAN TABLE
     # -------------------------------------------------
     st.divider()
     st.subheader("📁 PMP Categories – Percentage View")
 
-    if total_tickets > 0:
+    cat = filtered_df.groupby("Category").size().reset_index(name="Tickets")
+    cat["Percentage"] = (
+        (cat["Tickets"] / total) * 100
+    ).round(0).astype(int).astype(str) + "%"
 
-        cat = filtered_df.groupby("Category").size().reset_index(name="Tickets")
-        cat["Percentage"] = (
-            (cat["Tickets"] / total_tickets) * 100
-        ).round(0).astype(int).astype(str) + "%"
+    # Status counts
+    closed_map = filtered_df[filtered_df["Status"] == "Closed"].groupby("Category").size()
+    inprog_map = filtered_df[filtered_df["Status"] == "In-Progress"].groupby("Category").size()
 
-        # Status counts
-        closed_map = filtered_df[filtered_df["Status"] == "Closed"].groupby("Category").size()
-        inprog_map = filtered_df[filtered_df["Status"] == "In-Progress"].groupby("Category").size()
+    cat["Closed"] = cat["Category"].map(closed_map).fillna(0).astype(int)
+    cat["In-Progress"] = cat["Category"].map(inprog_map).fillna(0).astype(int)
 
-        cat["Closed"] = cat["Category"].map(closed_map).fillna(0).astype(int)
-        cat["In-Progress"] = cat["Category"].map(inprog_map).fillna(0).astype(int)
+    def build_status(row):
+        parts = []
+        if row["Closed"] > 0:
+            parts.append(f"🟢 Closed={row['Closed']}")
+        if row["In-Progress"] > 0:
+            parts.append(f"🟠 In-Progress={row['In-Progress']}")
+        return " · ".join(parts)
 
-        # Status column
-        def build_status(row):
-            parts = []
-            if row["Closed"] > 0:
-                parts.append(f"🟢 Closed={row['Closed']}")
-            if row["In-Progress"] > 0:
-                parts.append(f"🟠 In-Progress={row['In-Progress']}")
-            return " · ".join(parts)
+    cat["Status"] = cat.apply(build_status, axis=1)
 
-        cat["Status"] = cat.apply(build_status, axis=1)
+    def build_inprog_levels(category):
+        grp = filtered_df[
+            (filtered_df["Category"] == category) &
+            (filtered_df["Status"] == "In-Progress")
+        ].groupby("L1/L2/L3").size()
+        return "-" if grp.empty else " · ".join([f"{lvl}={cnt}" for lvl, cnt in grp.items()])
 
-        # Levels (overall)
-        def build_levels(category):
-            grp = filtered_df[filtered_df["Category"] == category].groupby("L1/L2/L3").size()
-            return " · ".join([f"{lvl}({cnt})" for lvl, cnt in grp.items()])
+    def build_closed_levels(category):
+        grp = filtered_df[
+            (filtered_df["Category"] == category) &
+            (filtered_df["Status"] == "Closed")
+        ].groupby("L1/L2/L3").size()
+        return "-" if grp.empty else " · ".join([f"{lvl}={cnt}" for lvl, cnt in grp.items()])
 
-        # In-progress levels
-        def build_inprog_levels(category):
-            grp = filtered_df[
-                (filtered_df["Category"] == category) &
-                (filtered_df["Status"] == "In-Progress")
-            ].groupby("L1/L2/L3").size()
-            return "-" if grp.empty else " · ".join([f"{lvl}={cnt}" for lvl, cnt in grp.items()])
+    cat["In-Progress Levels"] = cat["Category"].apply(build_inprog_levels)
+    cat["Closed Levels"] = cat["Category"].apply(build_closed_levels)
 
-        # Closed levels
-        def build_closed_levels(category):
-            grp = filtered_df[
-                (filtered_df["Category"] == category) &
-                (filtered_df["Status"] == "Closed")
-            ].groupby("L1/L2/L3").size()
-            return "-" if grp.empty else " · ".join([f"{lvl}={cnt}" for lvl, cnt in grp.items()])
+    display_cat = cat[
+        ["Category", "Tickets", "Percentage", "Status", "In-Progress Levels", "Closed Levels"]
+    ]
 
-        cat["Levels"] = cat["Category"].apply(build_levels)
-        cat["In-Progress Levels"] = cat["Category"].apply(build_inprog_levels)
-        cat["Closed Levels"] = cat["Category"].apply(build_closed_levels)
+    top = display_cat["Tickets"].max()
 
-        display_cat = cat[
-            [
-                "Category",
-                "Tickets",
-                "Percentage",
-                "Status",
-                "Levels",
-                "In-Progress Levels",
-                "Closed Levels"
-            ]
-        ]
+    def highlight_top(row):
+        if row["Tickets"] == top:
+            return ["background-color:#1f3d2b; color:#b7f5c6; font-weight:bold"] * len(row)
+        return [""] * len(row)
 
-        top = display_cat["Tickets"].max()
-
-        def highlight_top(row):
-            if row["Tickets"] == top:
-                return ["background-color:#1f3d2b; color:#b7f5c6; font-weight:bold"] * len(row)
-            return [""] * len(row)
-
-        st.dataframe(
-            display_cat.style.apply(highlight_top, axis=1),
-            hide_index=True,
-            use_container_width=True
-        )
+    st.dataframe(
+        display_cat.style.apply(highlight_top, axis=1),
+        hide_index=True,
+        use_container_width=True
+    )
 
 # =================================================
-# OVERALL OPEN TICKETS TAB
+# OVERALL OPEN TICKETS (SLA HIGHLIGHT RESTORED)
 # =================================================
 with tab_open:
 
     st.subheader("📌 Overall Open Tickets")
 
-    if not open_df.empty:
-        open_df["Request Date"] = pd.to_datetime(open_df["Request Date"], dayfirst=True)
-        today_ts = pd.Timestamp.today().normalize()
-        open_df["Pending Days"] = (today_ts - open_df["Request Date"]).dt.days
+    open_df["Request Date"] = pd.to_datetime(open_df["Request Date"], dayfirst=True)
+    today_ts = pd.Timestamp.today().normalize()
+    open_df["Pending Days"] = (today_ts - open_df["Request Date"]).dt.days
 
-        SLA_DAYS = 1
-        open_df["SLA Status"] = open_df["Pending Days"].apply(
-            lambda x: "❌ Breached" if x > SLA_DAYS else "✅ Within SLA"
-        )
-        open_df["SLA Breach Days"] = open_df["Pending Days"].apply(
-            lambda x: max(0, x - SLA_DAYS)
-        )
+    SLA_DAYS = 1
+    open_df["SLA Status"] = open_df["Pending Days"].apply(
+        lambda x: "❌ Breached" if x > SLA_DAYS else "✅ Within SLA"
+    )
 
-        show_breached = st.checkbox("Show only SLA breached tickets")
+    show_breached = st.checkbox("Show only SLA breached tickets")
 
-        display_df = open_df.copy()
-        if show_breached:
-            display_df = display_df[display_df["SLA Status"] == "❌ Breached"]
+    display_df = open_df.copy()
+    if show_breached:
+        display_df = display_df[display_df["SLA Status"] == "❌ Breached"]
 
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+    def highlight_sla(row):
+        if row["SLA Status"] == "❌ Breached":
+            return ["background-color:#7a1f1f; color:white"] * len(row)
+        return [""] * len(row)
+
+    st.dataframe(
+        display_df.style.apply(highlight_sla, axis=1),
+        hide_index=True,
+        use_container_width=True
+    )
 
 # =================================================
-# VISUAL INSIGHTS TAB
+# VISUAL INSIGHTS
 # =================================================
 with tab_charts:
 
@@ -273,8 +246,7 @@ with tab_charts:
         left.pyplot(fig1)
 
     level_status = (
-        filtered_df
-        .groupby(["L1/L2/L3", "Status"])
+        filtered_df.groupby(["L1/L2/L3", "Status"])
         .size()
         .unstack(fill_value=0)
     )
