@@ -61,6 +61,38 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+# -------------------------------------------------
+# STATUS CHIPS CSS
+# -------------------------------------------------
+st.markdown(
+    """
+    <style>
+    .chip {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-right: 6px;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+    }
+
+    .chip-closed {
+        background: rgba(0, 255, 153, 0.15);
+        color: #00ff99;
+        border: 1px solid rgba(0, 255, 153, 0.4);
+    }
+
+    .chip-inprog {
+        background: rgba(255, 153, 0, 0.15);
+        color: #ff9f43;
+        border: 1px solid rgba(255, 153, 0, 0.4);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # -------------------------------------------------
 # GOOGLE SHEETS
