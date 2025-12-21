@@ -260,6 +260,7 @@ if total_tickets > 0:
 else:
     st.info("No category data available.")
 
+
 # =================================================
 # OVERALL OPEN TICKETS TAB
 # =================================================
