@@ -10,6 +10,57 @@ st.set_page_config(
     page_title="PMP Ticket Dashboard",
     layout="wide"
 )
+# -------------------------------------------------
+# GLOBAL UI ENHANCEMENTS (NEON + ANIMATION)
+# -------------------------------------------------
+st.markdown(
+    """
+    <style>
+    /* Smooth fade-in for tables */
+    .stDataFrame {
+        animation: fadeInUp 0.6s ease-in-out;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(6px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Neon hover effect on table rows */
+    .stDataFrame tbody tr:hover {
+        background-color: rgba(0, 255, 153, 0.08) !important;
+        box-shadow: inset 0 0 12px rgba(0, 255, 153, 0.25);
+        transition: all 0.2s ease-in-out;
+    }
+
+    /* Softer table borders */
+    .stDataFrame table {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    /* Scrollbar polish */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #00ff99, #00cc88);
+        border-radius: 6px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #0e1117;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # -------------------------------------------------
 # GOOGLE SHEETS
