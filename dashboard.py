@@ -165,50 +165,52 @@ with tab_dashboard:
 
     st.dataframe(ownership, hide_index=True)
 
-    # -------------------------------
-    # CATEGORY PERCENTAGE VIEW
-    # -------------------------------
-    st.divider()
-    st.subheader("📁 PMP Categories – Percentage View")
+   # -------------------------------
+# CATEGORY PERCENTAGE VIEW (PHASE 2 – EXPANDERS)
+# -------------------------------
+st.divider()
+st.subheader("📁 PMP Categories – Percentage View")
 
-    if total_tickets > 0:
-        cat = (
-            filtered_df
-            .groupby("Category")
-            .size()
-            .reset_index(name="Tickets")
-        )
+if total_tickets > 0:
 
-        # Balanced rounding
-        cat["ExactPct"] = (cat["Tickets"] / total_tickets) * 100
-        cat["RoundedPct"] = cat["ExactPct"].astype(int)
-        cat["Remainder"] = cat["ExactPct"] - cat["RoundedPct"]
+    cat = filtered_df.groupby("Category").size().reset_index(name="Tickets")
+    cat["ExactPct"] = (cat["Tickets"] / total_tickets) * 100
+    cat["Percentage"] = cat["ExactPct"].round(0).astype(int).astype(str) + "%"
 
-        missing = 100 - cat["RoundedPct"].sum()
-        if missing > 0:
-            cat = cat.sort_values("Remainder", ascending=False)
-            cat.iloc[:missing, cat.columns.get_loc("RoundedPct")] += 1
+    closed_map = filtered_df[filtered_df["Status"] == "Closed"].groupby("Category").size()
+    inprog_map = filtered_df[filtered_df["Status"] == "In-Progress"].groupby("Category").size()
 
-        cat["Percentage"] = cat["RoundedPct"].astype(str) + "%"
-        cat = cat[["Category", "Tickets", "Percentage"]]
+    cat["Closed"] = cat["Category"].map(closed_map).fillna(0).astype(int)
+    cat["In-Progress"] = cat["Category"].map(inprog_map).fillna(0).astype(int)
 
-        # Highlight top category (green)
-        top_tickets = cat["Tickets"].max()
+    display_cat = cat[["Category", "Tickets", "Percentage", "Closed", "In-Progress"]]
 
-        def highlight_top_category(row):
-            if row["Tickets"] == top_tickets:
-                return [
-                    "background-color: #1f3d2b; color: #b7f5c6; font-weight: bold"
-                ] * len(row)
-            return [""] * len(row)
+    top = display_cat["Tickets"].max()
 
-        st.dataframe(
-            cat.style.apply(highlight_top_category, axis=1),
-            hide_index=True
-        )
-    else:
-        st.info("No category data available.")
+    def highlight_top(row):
+        if row["Tickets"] == top:
+            return ["background-color:#1f3d2b; color:#b7f5c6; font-weight:bold"] * len(row)
+        return [""] * len(row)
 
+    st.dataframe(
+        display_cat.style.apply(highlight_top, axis=1),
+        hide_index=True,
+        use_container_width=True
+    )
+
+    # 🔽 Expanders for detailed breakdown
+    st.markdown("### 🔍 Category-wise Level Breakdown")
+
+    for category in display_cat["Category"]:
+        with st.expander(f"📂 {category} — detailed view"):
+            sub = filtered_df[filtered_df["Category"] == category]
+
+            for status in ["Closed", "In-Progress"]:
+                grp = sub[sub["Status"] == status].groupby("L1/L2/L3").size()
+                if not grp.empty:
+                    st.markdown(f"**{status}**")
+                    for lvl, cnt in grp.items():
+                        st.write(f"• {lvl} : {cnt}")
 # =================================================
 # OVERALL OPEN TICKETS TAB
 # =================================================
