@@ -98,7 +98,6 @@ tab_dashboard, tab_open, tab_charts = st.tabs(
 # =================================================
 with tab_dashboard:
 
-    # KPIs
     col1, col2, col3, col4 = st.columns(4)
     total = len(filtered_df)
     closed = (filtered_df["Status"] == "Closed").sum()
@@ -134,11 +133,9 @@ with tab_dashboard:
         .reset_index()
     )
 
-    st.dataframe(ownership, hide_index=True)
+    st.dataframe(ownership, hide_index=True, use_container_width=True)
 
-    # -------------------------------------------------
-    # PMP CATEGORIES – CLEAN TABLE
-    # -------------------------------------------------
+    # PMP Categories
     st.divider()
     st.subheader("📁 PMP Categories – Percentage View")
 
@@ -147,7 +144,6 @@ with tab_dashboard:
         (cat["Tickets"] / total) * 100
     ).round(0).astype(int).astype(str) + "%"
 
-    # Status counts
     closed_map = filtered_df[filtered_df["Status"] == "Closed"].groupby("Category").size()
     inprog_map = filtered_df[filtered_df["Status"] == "In-Progress"].groupby("Category").size()
 
@@ -164,22 +160,15 @@ with tab_dashboard:
 
     cat["Status"] = cat.apply(build_status, axis=1)
 
-    def build_inprog_levels(category):
+    def build_levels(category, status):
         grp = filtered_df[
             (filtered_df["Category"] == category) &
-            (filtered_df["Status"] == "In-Progress")
+            (filtered_df["Status"] == status)
         ].groupby("L1/L2/L3").size()
         return "-" if grp.empty else " · ".join([f"{lvl}={cnt}" for lvl, cnt in grp.items()])
 
-    def build_closed_levels(category):
-        grp = filtered_df[
-            (filtered_df["Category"] == category) &
-            (filtered_df["Status"] == "Closed")
-        ].groupby("L1/L2/L3").size()
-        return "-" if grp.empty else " · ".join([f"{lvl}={cnt}" for lvl, cnt in grp.items()])
-
-    cat["In-Progress Levels"] = cat["Category"].apply(build_inprog_levels)
-    cat["Closed Levels"] = cat["Category"].apply(build_closed_levels)
+    cat["In-Progress Levels"] = cat["Category"].apply(lambda x: build_levels(x, "In-Progress"))
+    cat["Closed Levels"] = cat["Category"].apply(lambda x: build_levels(x, "Closed"))
 
     display_cat = cat[
         ["Category", "Tickets", "Percentage", "Status", "In-Progress Levels", "Closed Levels"]
@@ -199,7 +188,7 @@ with tab_dashboard:
     )
 
 # =================================================
-# OVERALL OPEN TICKETS (SLA HIGHLIGHT RESTORED)
+# OVERALL OPEN TICKETS (SLA FULL DETAILS RESTORED)
 # =================================================
 with tab_open:
 
@@ -212,6 +201,9 @@ with tab_open:
     SLA_DAYS = 1
     open_df["SLA Status"] = open_df["Pending Days"].apply(
         lambda x: "❌ Breached" if x > SLA_DAYS else "✅ Within SLA"
+    )
+    open_df["SLA Breach Days"] = open_df["Pending Days"].apply(
+        lambda x: max(0, x - SLA_DAYS)
     )
 
     show_breached = st.checkbox("Show only SLA breached tickets")
@@ -232,7 +224,7 @@ with tab_open:
     )
 
 # =================================================
-# VISUAL INSIGHTS
+# VISUAL INSIGHTS (X-AXIS FIXED)
 # =================================================
 with tab_charts:
 
@@ -249,12 +241,15 @@ with tab_charts:
         filtered_df.groupby(["L1/L2/L3", "Status"])
         .size()
         .unstack(fill_value=0)
+        .reindex(["L1", "L2", "L3"])
+        .fillna(0)
     )
 
     if not level_status.empty:
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         level_status.plot(kind="bar", ax=ax2)
         ax2.set_title("Ticket Status by Level")
+        ax2.tick_params(axis="x", rotation=0)  # ✅ FIXED
         right.pyplot(fig2)
 
 # -------------------------------------------------
