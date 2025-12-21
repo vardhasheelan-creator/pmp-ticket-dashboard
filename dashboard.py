@@ -27,7 +27,7 @@ OPEN_TICKETS_URL = (
 )
 
 # -------------------------------------------------
-# LOAD DATA
+# LOAD MAIN DASHBOARD DATA
 # -------------------------------------------------
 @st.cache_data(ttl=60)
 def load_dashboard_data():
@@ -40,19 +40,22 @@ def load_dashboard_data():
     )
 
     df = df.dropna(subset=["Request Date"])
-    df["Request Date"] = df["Request Date"].dt.normalize()
-    df = df[df["Request Date"].dt.year == datetime.today().year]
 
+    current_year = datetime.today().year
+    df = df[df["Request Date"].dt.year == current_year]
+
+    df["Request Date"] = df["Request Date"].dt.normalize()
     return df
 
-
+# -------------------------------------------------
+# LOAD OPEN TICKETS DATA
+# -------------------------------------------------
 @st.cache_data(ttl=60)
 def load_open_tickets():
     try:
         return pd.read_csv(OPEN_TICKETS_URL)
     except Exception:
         return pd.DataFrame()
-
 
 df = load_dashboard_data()
 open_df = load_open_tickets()
@@ -111,7 +114,9 @@ tab_dashboard, tab_open, tab_charts = st.tabs(
 # =================================================
 with tab_dashboard:
 
-    # KPIs
+    # -------------------------------
+    # TOP KPIs
+    # -------------------------------
     col1, col2, col3, col4 = st.columns(4)
 
     total_tickets = len(filtered_df)
@@ -124,18 +129,27 @@ with tab_dashboard:
     col3.metric("Closed", closed_tickets)
     col4.metric("In-Progress", in_progress)
 
-    # Inflow vs Closure
+    # -------------------------------
+    # INFLOW vs CLOSURE (RESTORED)
+    # -------------------------------
     st.divider()
     st.subheader("📈 Inflow vs Closure (%)")
 
     if total_tickets > 0:
         closure_pct = int((closed_tickets / total_tickets) * 100)
-        st.progress(closure_pct / 100)
-        st.caption(f"Closure Rate: {closure_pct}% | Pending: {100 - closure_pct}%")
-    else:
-        st.info("No tickets available.")
+        pending_pct = 100 - closure_pct
 
-    # Ownership by Level
+        c1, c2 = st.columns(2)
+        c1.metric("Closure Rate", f"{closure_pct}%")
+        c2.metric("Pending", f"{pending_pct}%")
+
+        st.progress(closure_pct / 100)
+    else:
+        st.info("No tickets available for the selected period.")
+
+    # -------------------------------
+    # OWNERSHIP BY LEVEL
+    # -------------------------------
     st.divider()
     st.subheader("🧑‍💼 Ticket Ownership by Level")
 
@@ -151,53 +165,52 @@ with tab_dashboard:
 
     st.dataframe(ownership, hide_index=True)
 
-    # Category Percentage View (ENHANCED, NOT REMOVED)
+    # -------------------------------
+    # CATEGORY PERCENTAGE VIEW
+    # -------------------------------
     st.divider()
     st.subheader("📁 PMP Categories – Percentage View")
 
     if total_tickets > 0:
+        cat = (
+            filtered_df
+            .groupby("Category")
+            .size()
+            .reset_index(name="Tickets")
+        )
 
-        cat = filtered_df.groupby("Category").size().reset_index(name="Tickets")
-
+        # Balanced rounding
         cat["ExactPct"] = (cat["Tickets"] / total_tickets) * 100
-        cat["Percentage"] = cat["ExactPct"].round(0).astype(int).astype(str) + "%"
+        cat["RoundedPct"] = cat["ExactPct"].astype(int)
+        cat["Remainder"] = cat["ExactPct"] - cat["RoundedPct"]
 
-        # Closed & In-Progress counts
-        closed_map = filtered_df[filtered_df["Status"] == "Closed"].groupby("Category").size()
-        inprog_map = filtered_df[filtered_df["Status"] == "In-Progress"].groupby("Category").size()
+        missing = 100 - cat["RoundedPct"].sum()
+        if missing > 0:
+            cat = cat.sort_values("Remainder", ascending=False)
+            cat.iloc[:missing, cat.columns.get_loc("RoundedPct")] += 1
 
-        cat["Closed"] = cat["Category"].map(closed_map).fillna(0).astype(int)
-        cat["In-Progress"] = cat["Category"].map(inprog_map).fillna(0).astype(int)
+        cat["Percentage"] = cat["RoundedPct"].astype(str) + "%"
+        cat = cat[["Category", "Tickets", "Percentage"]]
 
-        # Level Breakdown text
-        def level_breakdown(category):
-            sub = filtered_df[filtered_df["Category"] == category]
-            parts = []
-            for status in ["Closed", "In-Progress"]:
-                grp = sub[sub["Status"] == status].groupby("L1/L2/L3").size()
-                if not grp.empty:
-                    parts.append(
-                        f"{status} → " + ", ".join([f"{k}={v}" for k, v in grp.items()])
-                    )
-            return " | ".join(parts)
+        # Highlight top category (green)
+        top_tickets = cat["Tickets"].max()
 
-        cat["Level Breakdown"] = cat["Category"].apply(level_breakdown)
-
-        cat = cat[
-            ["Category", "Tickets", "Percentage", "Closed", "In-Progress", "Level Breakdown"]
-        ]
-
-        top = cat["Tickets"].max()
-
-        def highlight_top(row):
-            if row["Tickets"] == top:
-                return ["background-color:#1f3d2b; color:#b7f5c6; font-weight:bold"] * len(row)
+        def highlight_top_category(row):
+            if row["Tickets"] == top_tickets:
+                return [
+                    "background-color: #1f3d2b; color: #b7f5c6; font-weight: bold"
+                ] * len(row)
             return [""] * len(row)
 
-        st.dataframe(cat.style.apply(highlight_top, axis=1), hide_index=True)
+        st.dataframe(
+            cat.style.apply(highlight_top_category, axis=1),
+            hide_index=True
+        )
+    else:
+        st.info("No category data available.")
 
 # =================================================
-# OVERALL OPEN TICKETS TAB (RESTORED)
+# OVERALL OPEN TICKETS TAB
 # =================================================
 with tab_open:
 
@@ -209,7 +222,9 @@ with tab_open:
         open_df.columns = open_df.columns.str.strip()
 
         open_df["Request Date"] = pd.to_datetime(
-            open_df["Request Date"], dayfirst=True, errors="coerce"
+            open_df["Request Date"],
+            dayfirst=True,
+            errors="coerce"
         )
 
         open_df = open_df.dropna(subset=["Request Date"])
@@ -227,32 +242,58 @@ with tab_open:
 
         open_df["Request Date"] = open_df["Request Date"].dt.strftime("%d-%m-%Y")
 
+        if "Comments" in open_df.columns:
+            open_df = open_df.drop(columns=["Comments"])
+
+        preferred_columns = [
+            "Request Date",
+            "User Name",
+            "User Email",
+            "Query Description",
+            "Category",
+            "Level",
+            "Status",
+            "Workspace ID",
+            "SLA Status",
+            "SLA Breach Days"
+        ]
+
+        display_columns = [c for c in preferred_columns if c in open_df.columns]
+        display_df = open_df[display_columns].copy()
+
         show_breached = st.checkbox("Show only SLA breached tickets")
+
         if show_breached:
-            open_df = open_df[open_df["SLA Status"] == "❌ Breached"]
+            display_df = display_df[display_df["SLA Status"] == "❌ Breached"]
 
         def highlight_sla(row):
             if row["SLA Status"] == "❌ Breached":
-                return ["background-color:#7a1f1f; color:white"] * len(row)
+                return ["background-color: #7a1f1f; color: white"] * len(row)
             return [""] * len(row)
 
         st.dataframe(
-            open_df.style.apply(highlight_sla, axis=1),
+            display_df.style.apply(highlight_sla, axis=1),
             use_container_width=True,
             hide_index=True
         )
 
 # =================================================
-# VISUAL INSIGHTS TAB (RESTORED)
+# VISUAL INSIGHTS TAB
 # =================================================
 with tab_charts:
 
     left, right = st.columns(2)
 
     status_counts = filtered_df["Status"].value_counts()
+
     if not status_counts.empty:
         fig1, ax1 = plt.subplots()
-        ax1.pie(status_counts, labels=status_counts.index, autopct="%1.0f%%", startangle=90)
+        ax1.pie(
+            status_counts,
+            labels=status_counts.index,
+            autopct="%1.0f%%",
+            startangle=90
+        )
         ax1.set_title("Ticket Status Distribution")
         left.pyplot(fig1)
 
