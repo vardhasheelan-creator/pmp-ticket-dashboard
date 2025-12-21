@@ -3,174 +3,99 @@ import pandas as pd
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 
-# -------------------------------------------------
+# =================================================
 # PAGE CONFIG
-# -------------------------------------------------
-st.set_page_config(
-    page_title="PMP Ticket Dashboard",
-    layout="wide"
-)
-# -------------------------------------------------
-# GLOBAL UI ENHANCEMENTS (NEON + ANIMATION)
-# -------------------------------------------------
-st.markdown(
-    """
-    <style>
-    /* Smooth fade-in for tables */
-    .stDataFrame {
-        animation: fadeInUp 0.6s ease-in-out;
-    }
+# =================================================
+st.set_page_config(page_title="PMP Ticket Dashboard", layout="wide")
 
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(6px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
+# =================================================
+# UI STYLES (chips + animation)
+# =================================================
+st.markdown("""
+<style>
+/* Status chips */
+.chip {
+    display:inline-block;
+    padding:4px 10px;
+    border-radius:20px;
+    font-size:12px;
+    font-weight:600;
+    margin-right:6px;
+}
+.chip-closed {
+    background:rgba(0,255,153,0.15);
+    color:#00ff99;
+    border:1px solid rgba(0,255,153,0.4);
+}
+.chip-inprog {
+    background:rgba(255,153,0,0.15);
+    color:#ff9f43;
+    border:1px solid rgba(255,153,0,0.4);
+}
 
-    /* Neon hover effect on table rows */
-    .stDataFrame tbody tr:hover {
-        background-color: rgba(0, 255, 153, 0.08) !important;
-        box-shadow: inset 0 0 12px rgba(0, 255, 153, 0.25);
-        transition: all 0.2s ease-in-out;
-    }
+/* Animated progress bar */
+.progress-wrap {
+    animation:pulseGlow 1.5s ease-in-out infinite;
+}
+@keyframes pulseGlow {
+    0% { box-shadow:0 0 0 rgba(0,255,153,0); }
+    50% { box-shadow:0 0 14px rgba(0,255,153,0.4); }
+    100% { box-shadow:0 0 0 rgba(0,255,153,0); }
+}
+</style>
+""", unsafe_allow_html=True)
 
-    /* Softer table borders */
-    .stDataFrame table {
-        border-radius: 12px;
-        overflow: hidden;
-    }
+# =================================================
+# DATA SOURCES
+# =================================================
+PMP_TICKETS_URL = "https://docs.google.com/spreadsheets/d/1DQRB35J42NJjWFGSxBQWWdHxpGBccKsUF29hrthKjBU/export?format=csv"
+OPEN_TICKETS_URL = "https://docs.google.com/spreadsheets/d/1LQ2yzLJVaAfVNVQhkCuHNnEDbsdUIgdO_yS_4FMCKF4/export?format=csv"
 
-    /* Scrollbar polish */
-    ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #00ff99, #00cc88);
-        border-radius: 6px;
-    }
-    ::-webkit-scrollbar-track {
-        background: #0e1117;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-# -------------------------------------------------
-# STATUS CHIPS CSS
-# -------------------------------------------------
-st.markdown(
-    """
-    <style>
-    .chip {
-        display: inline-block;
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-        margin-right: 6px;
-        letter-spacing: 0.3px;
-        white-space: nowrap;
-    }
-
-    .chip-closed {
-        background: rgba(0, 255, 153, 0.15);
-        color: #00ff99;
-        border: 1px solid rgba(0, 255, 153, 0.4);
-    }
-
-    .chip-inprog {
-        background: rgba(255, 153, 0, 0.15);
-        color: #ff9f43;
-        border: 1px solid rgba(255, 153, 0, 0.4);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# -------------------------------------------------
-# GOOGLE SHEETS
-# -------------------------------------------------
-PMP_TICKETS_URL = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1DQRB35J42NJjWFGSxBQWWdHxpGBccKsUF29hrthKjBU"
-    "/export?format=csv"
-)
-
-OPEN_TICKETS_URL = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1LQ2yzLJVaAfVNVQhkCuHNnEDbsdUIgdO_yS_4FMCKF4"
-    "/export?format=csv"
-)
-
-# -------------------------------------------------
+# =================================================
 # LOAD DATA
-# -------------------------------------------------
+# =================================================
 @st.cache_data(ttl=60)
 def load_dashboard_data():
     df = pd.read_csv(PMP_TICKETS_URL)
-    df["Request Date"] = pd.to_datetime(
-        df["Request Date"].astype(str).str.strip(),
-        dayfirst=True,
-        errors="coerce"
-    )
+    df["Request Date"] = pd.to_datetime(df["Request Date"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Request Date"])
     df["Request Date"] = df["Request Date"].dt.normalize()
     return df
 
-
 @st.cache_data(ttl=60)
 def load_open_tickets():
-    try:
-        return pd.read_csv(OPEN_TICKETS_URL)
-    except Exception:
-        return pd.DataFrame()
-
+    return pd.read_csv(OPEN_TICKETS_URL)
 
 df = load_dashboard_data()
 open_df = load_open_tickets()
 
-# -------------------------------------------------
+# =================================================
 # FILTERS
-# -------------------------------------------------
+# =================================================
 st.sidebar.title("📅 Filters")
-
-view = st.sidebar.selectbox(
-    "Select View",
-    ["This Week", "Last Week", "This Month", "This Year"]
-)
-
+view = st.sidebar.selectbox("Select View", ["This Week", "Last Week", "This Month", "This Year"])
 today = datetime.today().date()
 
 if view == "This Week":
-    start_date = today - timedelta(days=today.weekday())
-    end_date = start_date + timedelta(days=6)
+    start = today - timedelta(days=today.weekday())
+    end = start + timedelta(days=6)
 elif view == "Last Week":
-    start_date = today - timedelta(days=today.weekday() + 7)
-    end_date = start_date + timedelta(days=6)
+    start = today - timedelta(days=today.weekday()+7)
+    end = start + timedelta(days=6)
 elif view == "This Month":
-    start_date = today.replace(day=1)
-    end_date = today
+    start = today.replace(day=1)
+    end = today
 else:
-    start_date = today.replace(month=1, day=1)
-    end_date = today
+    start = today.replace(month=1, day=1)
+    end = today
 
-filtered_df = df[
-    (df["Request Date"].dt.date >= start_date) &
-    (df["Request Date"].dt.date <= end_date)
-]
+filtered_df = df[(df["Request Date"].dt.date >= start) & (df["Request Date"].dt.date <= end)]
 
-# -------------------------------------------------
+# =================================================
 # HEADER
-# -------------------------------------------------
+# =================================================
 st.title("📊 PMP Ticket Dashboard")
-st.caption(f"Showing data from {start_date} to {end_date}")
+st.caption(f"Showing data from {start} to {end}")
 
 tab_dashboard, tab_open, tab_charts = st.tabs(
     ["📊 Dashboard", "📌 Overall Open Tickets", "📈 Visual Insights"]
@@ -181,51 +106,50 @@ tab_dashboard, tab_open, tab_charts = st.tabs(
 # =================================================
 with tab_dashboard:
 
+    # KPIs
     col1, col2, col3, col4 = st.columns(4)
     total = len(filtered_df)
     closed = (filtered_df["Status"] == "Closed").sum()
     open_ = (filtered_df["Status"] == "Open").sum()
-    in_prog = (filtered_df["Status"] == "In-Progress").sum()
+    inprog = (filtered_df["Status"] == "In-Progress").sum()
 
     col1.metric("Total Tickets", total)
     col2.metric("Open", open_)
     col3.metric("Closed", closed)
-    col4.metric("In-Progress", in_prog)
+    col4.metric("In-Progress", inprog)
 
-    # Inflow vs Closure
+    # ---------------- Inflow vs Closure (Animated) ----------------
     st.divider()
     st.subheader("📈 Inflow vs Closure (%)")
 
     if total > 0:
         closure_pct = int((closed / total) * 100)
+        st.markdown('<div class="progress-wrap">', unsafe_allow_html=True)
         st.progress(closure_pct / 100)
+        st.markdown('</div>', unsafe_allow_html=True)
+
         c1, c2 = st.columns(2)
         c1.metric("Closure Rate", f"{closure_pct}%")
         c2.metric("Pending", f"{100 - closure_pct}%")
 
-    # Ownership by Level
+    # ---------------- Ownership by Level ----------------
     st.divider()
     st.subheader("🧑‍💼 Ticket Ownership by Level")
 
     ownership = (
         filtered_df.groupby(["L1/L2/L3", "Status"])
-        .size()
-        .unstack(fill_value=0)
+        .size().unstack(fill_value=0)
         .reindex(["L1", "L2", "L3"])
-        .fillna(0)
-        .reset_index()
+        .fillna(0).reset_index()
     )
+    st.dataframe(ownership, hide_index=True)
 
-    st.dataframe(ownership, hide_index=True, use_container_width=True)
-
-    # PMP Categories
+    # ---------------- PMP Categories ----------------
     st.divider()
     st.subheader("📁 PMP Categories – Percentage View")
 
     cat = filtered_df.groupby("Category").size().reset_index(name="Tickets")
-    cat["Percentage"] = (
-        (cat["Tickets"] / total) * 100
-    ).round(0).astype(int).astype(str) + "%"
+    cat["Percentage"] = ((cat["Tickets"] / total) * 100).round(0).astype(int).astype(str) + "%"
 
     closed_map = filtered_df[filtered_df["Status"] == "Closed"].groupby("Category").size()
     inprog_map = filtered_df[filtered_df["Status"] == "In-Progress"].groupby("Category").size()
@@ -233,48 +157,40 @@ with tab_dashboard:
     cat["Closed"] = cat["Category"].map(closed_map).fillna(0).astype(int)
     cat["In-Progress"] = cat["Category"].map(inprog_map).fillna(0).astype(int)
 
-    def build_status(row):
-        parts = []
+    def status_chip(row):
+        chips = []
         if row["Closed"] > 0:
-            parts.append(f"🟢 Closed={row['Closed']}")
+            chips.append(f"<span class='chip chip-closed'>Closed={row['Closed']}</span>")
         if row["In-Progress"] > 0:
-            parts.append(f"🟠 In-Progress={row['In-Progress']}")
-        return " · ".join(parts)
+            chips.append(f"<span class='chip chip-inprog'>In-Progress={row['In-Progress']}</span>")
+        return " ".join(chips)
 
-    cat["Status"] = cat.apply(build_status, axis=1)
-
-    def build_levels(category, status):
+    def lvl_breakdown(category, status):
         grp = filtered_df[
             (filtered_df["Category"] == category) &
             (filtered_df["Status"] == status)
         ].groupby("L1/L2/L3").size()
-        return "-" if grp.empty else " · ".join([f"{lvl}={cnt}" for lvl, cnt in grp.items()])
+        return "-" if grp.empty else " · ".join([f"{k}={v}" for k,v in grp.items()])
 
-    cat["In-Progress Levels"] = cat["Category"].apply(lambda x: build_levels(x, "In-Progress"))
-    cat["Closed Levels"] = cat["Category"].apply(lambda x: build_levels(x, "Closed"))
+    cat["Status"] = cat.apply(status_chip, axis=1)
+    cat["In-Progress Levels"] = cat["Category"].apply(lambda x: lvl_breakdown(x, "In-Progress"))
+    cat["Closed Levels"] = cat["Category"].apply(lambda x: lvl_breakdown(x, "Closed"))
 
-    display_cat = cat[
-        ["Category", "Tickets", "Percentage", "Status", "In-Progress Levels", "Closed Levels"]
-    ]
-
+    display_cat = cat[["Category","Tickets","Percentage","Status","In-Progress Levels","Closed Levels"]]
     top = display_cat["Tickets"].max()
 
     def highlight_top(row):
-        if row["Tickets"] == top:
-            return ["background-color:#1f3d2b; color:#b7f5c6; font-weight:bold"] * len(row)
-        return [""] * len(row)
+        return ["background:#1f3d2b; color:#b7f5c6; font-weight:bold"]*len(row) if row["Tickets"]==top else [""]*len(row)
 
-    st.dataframe(
-        display_cat.style.apply(highlight_top, axis=1),
-        hide_index=True,
-        use_container_width=True
+    st.markdown(
+        display_cat.style.apply(highlight_top, axis=1).to_html(escape=False),
+        unsafe_allow_html=True
     )
 
 # =================================================
-# OVERALL OPEN TICKETS (SLA FULL DETAILS RESTORED)
+# OVERALL OPEN TICKETS (SLA RESTORED)
 # =================================================
 with tab_open:
-
     st.subheader("📌 Overall Open Tickets")
 
     open_df["Request Date"] = pd.to_datetime(open_df["Request Date"], dayfirst=True)
@@ -285,59 +201,47 @@ with tab_open:
     open_df["SLA Status"] = open_df["Pending Days"].apply(
         lambda x: "❌ Breached" if x > SLA_DAYS else "✅ Within SLA"
     )
-    open_df["SLA Breach Days"] = open_df["Pending Days"].apply(
-        lambda x: max(0, x - SLA_DAYS)
-    )
+    open_df["SLA Breach Days"] = open_df["Pending Days"].apply(lambda x: max(0, x - SLA_DAYS))
 
     show_breached = st.checkbox("Show only SLA breached tickets")
-
     display_df = open_df.copy()
     if show_breached:
         display_df = display_df[display_df["SLA Status"] == "❌ Breached"]
 
     def highlight_sla(row):
-        if row["SLA Status"] == "❌ Breached":
-            return ["background-color:#7a1f1f; color:white"] * len(row)
-        return [""] * len(row)
+        return ["background:#7a1f1f; color:white"]*len(row) if row["SLA Status"]=="❌ Breached" else [""]*len(row)
 
-    st.dataframe(
-        display_df.style.apply(highlight_sla, axis=1),
-        hide_index=True,
-        use_container_width=True
-    )
+    st.dataframe(display_df.style.apply(highlight_sla, axis=1), hide_index=True, use_container_width=True)
 
 # =================================================
-# VISUAL INSIGHTS (X-AXIS FIXED)
+# VISUAL INSIGHTS
 # =================================================
 with tab_charts:
-
     left, right = st.columns(2)
 
     status_counts = filtered_df["Status"].value_counts()
     if not status_counts.empty:
         fig1, ax1 = plt.subplots()
-        ax1.pie(status_counts, labels=status_counts.index, autopct="%1.0f%%")
+        ax1.pie(status_counts, labels=status_counts.index, autopct="%1.0f%%", startangle=90)
         ax1.set_title("Ticket Status Distribution")
         left.pyplot(fig1)
 
     level_status = (
-        filtered_df.groupby(["L1/L2/L3", "Status"])
-        .size()
-        .unstack(fill_value=0)
-        .reindex(["L1", "L2", "L3"])
-        .fillna(0)
+        filtered_df.groupby(["L1/L2/L3","Status"])
+        .size().unstack(fill_value=0)
+        .reindex(["L1","L2","L3"]).fillna(0)
     )
 
     if not level_status.empty:
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        fig2, ax2 = plt.subplots(figsize=(6,4))
         level_status.plot(kind="bar", ax=ax2)
         ax2.set_title("Ticket Status by Level")
-        ax2.tick_params(axis="x", rotation=0)  # ✅ FIXED
+        ax2.tick_params(axis="x", rotation=0)  # ✅ horizontal labels
         right.pyplot(fig2)
 
-# -------------------------------------------------
+# =================================================
 # DOWNLOAD
-# -------------------------------------------------
+# =================================================
 st.divider()
 st.download_button(
     "⬇️ Download Filtered Data (CSV)",
