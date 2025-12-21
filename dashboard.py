@@ -165,26 +165,59 @@ with tab_dashboard:
 
     st.dataframe(ownership, hide_index=True)
 
-   # -------------------------------
-# CATEGORY PERCENTAGE VIEW (PHASE 2 – EXPANDERS)
+# -------------------------------
+# CATEGORY PERCENTAGE VIEW – INLINE CHIPS + DETAIL DRAWER
 # -------------------------------
 st.divider()
 st.subheader("📁 PMP Categories – Percentage View")
 
 if total_tickets > 0:
 
+    # Base category counts
     cat = filtered_df.groupby("Category").size().reset_index(name="Tickets")
     cat["ExactPct"] = (cat["Tickets"] / total_tickets) * 100
     cat["Percentage"] = cat["ExactPct"].round(0).astype(int).astype(str) + "%"
 
-    closed_map = filtered_df[filtered_df["Status"] == "Closed"].groupby("Category").size()
-    inprog_map = filtered_df[filtered_df["Status"] == "In-Progress"].groupby("Category").size()
+    # Status counts
+    closed_map = (
+        filtered_df[filtered_df["Status"] == "Closed"]
+        .groupby("Category")
+        .size()
+    )
+
+    inprog_map = (
+        filtered_df[filtered_df["Status"] == "In-Progress"]
+        .groupby("Category")
+        .size()
+    )
 
     cat["Closed"] = cat["Category"].map(closed_map).fillna(0).astype(int)
     cat["In-Progress"] = cat["Category"].map(inprog_map).fillna(0).astype(int)
 
-    display_cat = cat[["Category", "Tickets", "Percentage", "Closed", "In-Progress"]]
+    # Status Snapshot (chips-style text)
+    def status_snapshot(row):
+        parts = []
+        if row["Closed"] > 0:
+            parts.append(f"🟢 Closed={row['Closed']}")
+        if row["In-Progress"] > 0:
+            parts.append(f"🟠 In-Prog={row['In-Progress']}")
+        return " · ".join(parts) if parts else "-"
 
+    cat["Status Snapshot"] = cat.apply(status_snapshot, axis=1)
+
+    # Owner Snapshot (L1/L2/L3 counts)
+    def owner_snapshot(category):
+        sub = filtered_df[filtered_df["Category"] == category]
+        grp = sub.groupby("L1/L2/L3").size()
+        return " · ".join([f"{lvl}({cnt})" for lvl, cnt in grp.items()])
+
+    cat["Owner Snapshot"] = cat["Category"].apply(owner_snapshot)
+
+    display_cat = cat[
+        ["Category", "Tickets", "Percentage", "Status Snapshot", "Owner Snapshot"]
+    ]
+
+    # Highlight top category
     top = display_cat["Tickets"].max()
 
     def highlight_top(row):
@@ -198,19 +231,35 @@ if total_tickets > 0:
         use_container_width=True
     )
 
-    # 🔽 Expanders for detailed breakdown
-    st.markdown("### 🔍 Category-wise Level Breakdown")
+    # -------------------------------
+    # SINGLE DETAIL DRAWER
+    # -------------------------------
+    st.markdown("### 🔎 Category-wise Detailed Breakdown")
 
-    for category in display_cat["Category"]:
-        with st.expander(f"📂 {category} — detailed view"):
-            sub = filtered_df[filtered_df["Category"] == category]
+    selected_category = st.selectbox(
+        "Select category to view details",
+        display_cat["Category"].tolist()
+    )
 
-            for status in ["Closed", "In-Progress"]:
-                grp = sub[sub["Status"] == status].groupby("L1/L2/L3").size()
-                if not grp.empty:
-                    st.markdown(f"**{status}**")
-                    for lvl, cnt in grp.items():
-                        st.write(f"• {lvl} : {cnt}")
+    detail_df = filtered_df[filtered_df["Category"] == selected_category]
+
+    st.markdown(f"#### 📂 {selected_category} — Detailed View")
+
+    for status in ["Closed", "In-Progress"]:
+        grp = (
+            detail_df[detail_df["Status"] == status]
+            .groupby("L1/L2/L3")
+            .size()
+        )
+
+        if not grp.empty:
+            st.markdown(f"**{status}:**")
+            for lvl, cnt in grp.items():
+                st.write(f"• {lvl} = {cnt}")
+
+else:
+    st.info("No category data available.")
+
 # =================================================
 # OVERALL OPEN TICKETS TAB
 # =================================================
