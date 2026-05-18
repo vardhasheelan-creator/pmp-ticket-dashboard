@@ -19,7 +19,10 @@ OPEN_TICKETS_URL = "https://docs.google.com/spreadsheets/d/1LQ2yzLJVaAfVNVQhkCuH
 # -------------------------------------------------
 @st.cache_data(ttl=60)
 def load_dashboard_data():
-    df = pd.read_csv(PMP_TICKETS_URL)
+    df = pd.read_excel(
+    "data/tickets.xlsx",
+    header=0
+)
     df["Request Date"] = pd.to_datetime(df["Request Date"], dayfirst=True, errors="coerce")
     df = df.dropna(subset=["Request Date"])
     df["Request Date"] = df["Request Date"].dt.normalize()
@@ -30,7 +33,44 @@ def load_open_tickets():
     return pd.read_csv(OPEN_TICKETS_URL)
 
 df = load_dashboard_data()
-open_df = load_open_tickets()
+# ==================================================
+# LOAD OPEN TICKETS FILE
+# ==================================================
+
+open_df = pd.read_excel(
+    r"C:\Users\Vardhasheela.nadar\Desktop\PMP_Open_Tickets.xlsx",
+    header=0
+)
+
+# Fix date
+open_df["Request Date"] = pd.to_datetime(
+    open_df["Request Date"],
+    dayfirst=True,
+    errors="coerce"
+)
+
+# Remove empty dates
+open_df = open_df.dropna(subset=["Request Date"])
+
+# Normalize dates
+open_df["Request Date"] = open_df["Request Date"].dt.normalize()
+
+# Standardize status values
+open_df["Status"] = open_df["Status"].astype(str).str.strip()
+
+# ==================================================
+# SLA LOGIC
+# ==================================================
+
+today = pd.Timestamp.today().normalize()
+
+open_df["SLA Breach Days"] = (
+    today - open_df["Request Date"]
+).dt.days
+
+open_df["SLA Status"] = open_df["SLA Breach Days"].apply(
+    lambda x: "⚠️ Breached SLA" if x > 3 else "✅ Within SLA"
+)
 
 # -------------------------------------------------
 # FILTERS
