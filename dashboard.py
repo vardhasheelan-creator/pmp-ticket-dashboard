@@ -38,7 +38,7 @@ df = load_dashboard_data()
 # ==================================================
 
 open_df = pd.read_excel(
-    r"C:\Users\Vardhasheela.nadar\Desktop\PMP_Open_Tickets.xlsx",
+    "data/PMP_Open_Tickets.xlsx",
     header=0
 )
 
