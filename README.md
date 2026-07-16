@@ -1,4 +1,4 @@
-# 📊 PMP Ticket Dashboard
+# 📊 Ticket Dashboard
 
 A single-project ticket tracking dashboard built with Python and Streamlit, specifically built for PMP project ticket management and reporting.
 
